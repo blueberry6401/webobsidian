@@ -1,0 +1,126 @@
+import { Router } from 'express';
+import multer from 'multer';
+import path from 'node:path';
+import { asyncHandler } from '../middleware/error.js';
+import { requireAuth } from '../middleware/auth.js';
+import * as vault from '../services/vault.js';
+import { qmd } from '../services/search.js';
+import { buildLinkGraph } from '../services/links.js';
+import { scheduleAutoCommitOnSave } from '../services/git.js';
+
+export const filesRouter = Router();
+filesRouter.use(requireAuth);
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 512 * 1024 * 1024 } });
+
+const MIME: Record<string, string> = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.svg': 'image/svg+xml', '.webp': 'image/webp', '.pdf': 'application/pdf',
+  '.mp4': 'video/mp4', '.mp3': 'audio/mpeg', '.webm': 'video/webm', '.ico': 'image/x-icon',
+};
+
+// Refresh derived indexes after a mutation (best-effort, non-blocking).
+function reindex(rel?: string) {
+  if (rel) void qmd.upsert(rel).catch(() => {});
+  void buildLinkGraph().catch(() => {});
+  scheduleAutoCommitOnSave();
+}
+
+filesRouter.get(
+  '/',
+  asyncHandler(async (_req, res) => {
+    res.json(await vault.listTree());
+  }),
+);
+
+filesRouter.get(
+  '/content',
+  asyncHandler(async (req, res) => {
+    const rel = String(req.query.path ?? '');
+    if (!rel) {
+      res.status(400).json({ error: 'path required' });
+      return;
+    }
+    if (vault.isTextFile(rel)) {
+      res.json({ path: rel, content: await vault.readFileText(rel), encoding: 'utf8' });
+    } else {
+      const buf = await vault.readFileBuffer(rel);
+      const mime = MIME[path.extname(rel).toLowerCase()] ?? 'application/octet-stream';
+      res.setHeader('Content-Type', mime);
+      res.send(buf);
+    }
+  }),
+);
+
+filesRouter.put(
+  '/content',
+  asyncHandler(async (req, res) => {
+    const { path: rel, content } = req.body ?? {};
+    if (typeof rel !== 'string' || typeof content !== 'string') {
+      res.status(400).json({ error: 'path and content required' });
+      return;
+    }
+    await vault.writeFileText(rel, content);
+    reindex(rel);
+    res.json({ ok: true, path: rel });
+  }),
+);
+
+filesRouter.post(
+  '/folder',
+  asyncHandler(async (req, res) => {
+    const { path: rel } = req.body ?? {};
+    if (typeof rel !== 'string') {
+      res.status(400).json({ error: 'path required' });
+      return;
+    }
+    await vault.createFolder(rel);
+    res.json({ ok: true, path: rel });
+  }),
+);
+
+filesRouter.post(
+  '/upload',
+  upload.single('file'),
+  asyncHandler(async (req, res) => {
+    const dir = String(req.body?.dir ?? '');
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: 'file required' });
+      return;
+    }
+    const rel = path.posix.join(dir, file.originalname);
+    await vault.writeFileBuffer(rel, file.buffer);
+    res.json({ ok: true, path: rel, size: file.size });
+  }),
+);
+
+filesRouter.patch(
+  '/rename',
+  asyncHandler(async (req, res) => {
+    const { from, to } = req.body ?? {};
+    if (typeof from !== 'string' || typeof to !== 'string') {
+      res.status(400).json({ error: 'from and to required' });
+      return;
+    }
+    await vault.rename(from, to);
+    await qmd.rename(from, to);
+    reindex();
+    res.json({ ok: true, from, to });
+  }),
+);
+
+filesRouter.delete(
+  '/',
+  asyncHandler(async (req, res) => {
+    const rel = String(req.query.path ?? '');
+    if (!rel) {
+      res.status(400).json({ error: 'path required' });
+      return;
+    }
+    const dest = await vault.trash(rel);
+    qmd.remove(rel);
+    reindex();
+    res.json({ ok: true, trashed: dest });
+  }),
+);

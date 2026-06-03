@@ -1,0 +1,268 @@
+import { useEffect, useState } from 'react';
+import { useStore } from '../lib/store';
+import { api } from '../lib/api';
+import Icon from './Icon';
+
+type Section = 'vault' | 'git' | 'api' | 'plugins' | 'appearance' | 'about';
+
+export default function Settings() {
+  const open = useStore((s) => s.settingsOpen);
+  const setOpen = useStore((s) => s.setSettings);
+  const [section, setSection] = useState<Section>('vault');
+  const [settings, setSettings] = useState<any>(null);
+
+  useEffect(() => {
+    if (open) api.getSettings().then(setSettings).catch(() => {});
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="modal-bg" onClick={() => setOpen(false)}>
+      <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="settings-layout">
+          <div className="settings-nav">
+            {(['vault', 'git', 'api', 'plugins', 'appearance', 'about'] as Section[]).map((s) => (
+              <button key={s} className={section === s ? 'active' : ''} onClick={() => setSection(s)}>
+                {labels[s]}
+              </button>
+            ))}
+          </div>
+          <div className="settings-content">
+            {settings && section === 'vault' && <VaultSettings s={settings} reload={() => api.getSettings().then(setSettings)} />}
+            {settings && section === 'git' && <GitSettings s={settings} reload={() => api.getSettings().then(setSettings)} />}
+            {section === 'api' && <ApiKeys />}
+            {section === 'plugins' && <Plugins />}
+            {settings && section === 'appearance' && <Appearance s={settings} />}
+            {section === 'about' && <About />}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const labels: Record<Section, string> = {
+  vault: 'Vault & Files',
+  git: 'GitHub Sync',
+  api: 'API Keys',
+  plugins: 'Community Plugins',
+  appearance: 'Appearance',
+  about: 'About',
+};
+
+function Row({ name, desc, children }: { name: string; desc?: string; children: React.ReactNode }) {
+  return (
+    <div className="setting-row">
+      <div className="info">
+        <div className="name">{name}</div>
+        {desc && <div className="desc">{desc}</div>}
+      </div>
+      <div className="control">{children}</div>
+    </div>
+  );
+}
+
+function VaultSettings({ s, reload }: { s: any; reload: () => void }) {
+  const [path, setPath] = useState(s.vault.path);
+  const [browser, setBrowser] = useState<any>(null);
+  const save = async () => {
+    await api.putSettings({ vault: { path } });
+    await reload();
+    alert('Vault path saved. Reindex from the command palette if needed.');
+  };
+  const browse = async (dir?: string) => setBrowser(await api.browse(dir).catch((e) => ({ error: e.message })));
+  return (
+    <div>
+      <h2>Vault & Files</h2>
+      <Row name="Vault path" desc="Absolute path on the server to your notes folder">
+        <input className="text-input" style={{ width: 260 }} value={path} onChange={(e) => setPath(e.target.value)} />
+      </Row>
+      <div style={{ display: 'flex', gap: 8, margin: '8px 0' }}>
+        <button className="btn secondary" onClick={() => browse()}>Browse…</button>
+        <button className="btn" onClick={save}>Save vault path</button>
+      </div>
+      {browser && !browser.error && (
+        <div style={{ border: '1px solid var(--bg-modifier-border)', borderRadius: 6, padding: 8, marginTop: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>{browser.dir}</div>
+          <div className="result" onClick={() => browse(browser.parent)} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="folder" size={15} /> ..
+          </div>
+          {browser.folders.map((f: any) => (
+            <div className="result" key={f.path} onClick={() => browse(f.path)} onDoubleClick={() => setPath(f.path)} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="folder" size={15} /> {f.name}
+              <button className="btn secondary" style={{ float: 'right', padding: '2px 8px' }} onClick={(e) => { e.stopPropagation(); setPath(f.path); }}>
+                Select
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {browser?.error && <div style={{ color: '#e5534b' }}>{browser.error}</div>}
+    </div>
+  );
+}
+
+function GitSettings({ s, reload }: { s: any; reload: () => void }) {
+  const [g, setG] = useState({ ...s.git });
+  const [log, setLog] = useState<string[]>([]);
+  const set = (k: string, v: any) => setG((p: any) => ({ ...p, [k]: v }));
+  const save = async () => { await api.putSettings({ git: g }); await reload(); setLog(['Saved git settings']); };
+  const run = async (fn: () => Promise<any>, label: string) => {
+    setLog([`${label}…`]);
+    try { const r = await fn(); setLog([JSON.stringify(r.message ?? r.log ?? r)]); }
+    catch (e: any) { setLog([`Error: ${e.message}`]); }
+  };
+  return (
+    <div>
+      <h2>GitHub Sync</h2>
+      <Row name="Enable git sync"><input type="checkbox" checked={g.enabled} onChange={(e) => set('enabled', e.target.checked)} /></Row>
+      <Row name="Remote URL" desc="https://github.com/owner/repo.git">
+        <input className="text-input" style={{ width: 260 }} value={g.remote} onChange={(e) => set('remote', e.target.value)} />
+      </Row>
+      <Row name="Branch"><input className="text-input" style={{ width: 120 }} value={g.branch} onChange={(e) => set('branch', e.target.value)} /></Row>
+      <Row name="Access token (PAT)" desc="Stored server-side; leave masked to keep current">
+        <input className="text-input" type="password" style={{ width: 260 }} value={g.token} onChange={(e) => set('token', e.target.value)} />
+      </Row>
+      <Row name="Author name"><input className="text-input" value={g.authorName} onChange={(e) => set('authorName', e.target.value)} /></Row>
+      <Row name="Author email"><input className="text-input" value={g.authorEmail} onChange={(e) => set('authorEmail', e.target.value)} /></Row>
+      <Row name="Auto-sync" desc="Periodic pull+commit+push on the interval below"><input type="checkbox" checked={g.autoSync} onChange={(e) => set('autoSync', e.target.checked)} /></Row>
+      <Row name="Auto-commit on save" desc="Commit (+push) ~5s after each edit"><input type="checkbox" checked={g.autoCommitOnSave} onChange={(e) => set('autoCommitOnSave', e.target.checked)} /></Row>
+      <Row name="Interval (sec)"><input className="text-input" type="number" style={{ width: 90 }} value={g.intervalSec} onChange={(e) => set('intervalSec', Number(e.target.value))} /></Row>
+      <Row name="Git LFS patterns" desc="Space-separated globs tracked via LFS">
+        <input className="text-input" style={{ width: 260 }} value={(g.lfsPatterns || []).join(' ')} onChange={(e) => set('lfsPatterns', e.target.value.split(/\s+/).filter(Boolean))} />
+      </Row>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+        <button className="btn" onClick={save}>Save</button>
+        <button className="btn secondary" onClick={() => run(api.gitInit, 'Init')}>Init repo</button>
+        <button className="btn secondary" onClick={() => run(api.gitClone, 'Clone')}>Clone</button>
+        <button className="btn secondary" onClick={() => run(api.gitPull, 'Pull')}>Pull</button>
+        <button className="btn secondary" onClick={() => run(() => api.gitCommit('WebObsidian update'), 'Commit')}>Commit</button>
+        <button className="btn secondary" onClick={() => run(api.gitPush, 'Push')}>Push</button>
+        <button className="btn" onClick={() => run(() => api.gitSync(), 'Sync')}>Sync now</button>
+      </div>
+      {log.length > 0 && <pre style={{ background: 'var(--bg-primary)', padding: 10, borderRadius: 6, marginTop: 12, whiteSpace: 'pre-wrap' }}>{log.join('\n')}</pre>}
+    </div>
+  );
+}
+
+function ApiKeys() {
+  const [keys, setKeys] = useState<any[]>([]);
+  const [name, setName] = useState('my-agent');
+  const [scopes, setScopes] = useState<string[]>(['read', 'search']);
+  const [created, setCreated] = useState('');
+  const load = () => api.listKeys().then((r) => setKeys(r.keys)).catch(() => {});
+  useEffect(() => { load(); }, []);
+  const toggle = (sc: string) => setScopes((p) => (p.includes(sc) ? p.filter((x) => x !== sc) : [...p, sc]));
+  const create = async () => {
+    const r = await api.createKey(name, scopes);
+    setCreated(r.key);
+    await load();
+  };
+  return (
+    <div>
+      <h2>API Keys</h2>
+      <p style={{ color: 'var(--text-muted)' }}>Keys let AI agents call <code>/api/v1</code>. The raw key is shown once.</p>
+      <Row name="Name"><input className="text-input" value={name} onChange={(e) => setName(e.target.value)} /></Row>
+      <Row name="Scopes">
+        <span>
+          {['read', 'write', 'search'].map((sc) => (
+            <label key={sc} style={{ marginRight: 10 }}>
+              <input type="checkbox" checked={scopes.includes(sc)} onChange={() => toggle(sc)} /> {sc}
+            </label>
+          ))}
+        </span>
+      </Row>
+      <button className="btn" onClick={create}>Create key</button>
+      {created && (
+        <pre style={{ background: 'var(--bg-primary)', padding: 10, borderRadius: 6, marginTop: 10, wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
+          {created}
+          {'\n'}⚠ Copy now — it will not be shown again.
+        </pre>
+      )}
+      <div style={{ marginTop: 16 }}>
+        {keys.map((k) => (
+          <div className="setting-row" key={k.id}>
+            <div className="info">
+              <div className="name">{k.name} <span style={{ color: 'var(--text-faint)' }}>{k.prefix}…</span></div>
+              <div className="desc">scopes: {k.scopes.join(', ')} · used: {k.lastUsed ?? 'never'}</div>
+            </div>
+            <button className="btn danger" onClick={async () => { await api.revokeKey(k.id); load(); }}>Revoke</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Plugins() {
+  const [plugins, setPlugins] = useState<any[]>([]);
+  const [repo, setRepo] = useState('');
+  const [msg, setMsg] = useState('');
+  const load = () => api.listPlugins().then((r) => setPlugins(r.plugins)).catch(() => {});
+  useEffect(() => { load(); }, []);
+  const install = async () => {
+    setMsg('Installing…');
+    try { await api.installPlugin(repo); setMsg('Installed ✓'); setRepo(''); await load(); }
+    catch (e: any) { setMsg(`Error: ${e.message}`); }
+  };
+  return (
+    <div>
+      <h2>Community Plugins</h2>
+      <Row name="Install from GitHub" desc="owner/repo — pulls manifest.json + main.js from latest release">
+        <span style={{ display: 'flex', gap: 8 }}>
+          <input className="text-input" placeholder="blacksmithgu/obsidian-dataview" value={repo} onChange={(e) => setRepo(e.target.value)} />
+          <button className="btn" onClick={install}>Install</button>
+        </span>
+      </Row>
+      {msg && <div style={{ color: 'var(--text-muted)', margin: '6px 0' }}>{msg}</div>}
+      <div style={{ marginTop: 12 }}>
+        {plugins.length === 0 && <div style={{ color: 'var(--text-faint)' }}>No plugins installed in .obsidian/plugins</div>}
+        {plugins.map((p) => (
+          <div className="setting-row" key={p.id}>
+            <div className="info">
+              <div className="name">{p.name} <span style={{ color: 'var(--text-faint)' }}>v{p.version}</span></div>
+              <div className="desc">{p.description}</div>
+            </div>
+            <label>
+              <input type="checkbox" checked={p.enabled} onChange={async (e) => { await api.setPluginEnabled(p.id, e.target.checked); load(); }} /> enabled
+            </label>
+          </div>
+        ))}
+      </div>
+      <p style={{ color: 'var(--text-faint)', fontSize: 12, marginTop: 14 }}>
+        Note: WebObsidian supports a subset of the Obsidian plugin API. Most metadata/markdown plugins work; plugins relying on Electron/Node internals may not.
+      </p>
+    </div>
+  );
+}
+
+function Appearance({ s }: { s: any }) {
+  const [theme, setTheme] = useState(s.ui.theme);
+  const save = async (t: string) => { setTheme(t); await api.putSettings({ ui: { theme: t } }); location.reload(); };
+  return (
+    <div>
+      <h2>Appearance</h2>
+      <Row name="Theme">
+        <select className="text-input" value={theme} onChange={(e) => save(e.target.value)}>
+          <option value="obsidian-dark">Obsidian Dark</option>
+          <option value="obsidian-light">Obsidian Light</option>
+        </select>
+      </Row>
+    </div>
+  );
+}
+
+function About() {
+  const logout = async () => { await api.logout(); location.reload(); };
+  return (
+    <div>
+      <h2>About WebObsidian</h2>
+      <p style={{ color: 'var(--text-muted)' }}>
+        A self-hosted, Obsidian-compatible web app. Vault, QMD search, GitHub sync (with LFS),
+        agent API and community plugins.
+      </p>
+      <button className="btn danger" onClick={logout}>Log out</button>
+    </div>
+  );
+}

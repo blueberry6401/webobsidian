@@ -1,0 +1,28 @@
+services:
+  webobsidian:
+    build: .
+    image: webobsidian:latest
+    container_name: webobsidian
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      # Set an initial password (otherwise set it on first-run in the UI)
+      WEBOBSIDIAN_PASSWORD: ${WEBOBSIDIAN_PASSWORD:-}
+      VAULT_PATH: /vault
+      DATA_DIR: /data
+      ALLOWED_ROOTS: /vault
+      NODE_ENV: production
+    volumes:
+      # Mount your notes vault here
+      - ./sample-vault:/vault
+      # Persisted settings.json + search index
+      - webobsidian-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8787/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  webobsidian-data:
