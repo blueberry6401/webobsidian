@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-06-11
+Cập nhật lần cuối: 2026-06-11 (Phase 19 — Mobile UI)
 
 ---
 
@@ -241,7 +241,37 @@ Cập nhật lần cuối: 2026-06-11
       suggester (`#`/`#^`), `$$` block nhiều dòng, click tag → search, fold heading/indent,
       chevron fold đặt sau title (hiện đặt trước)
 
+---
+
+## Phase 19 — Mobile / responsive UI (FR-11, theo yêu cầu người dùng)
+- [x] M19.1 Hook `useIsMobile` (matchMedia 768px) + state cục bộ `mobileDrawer` ('left'|'right'|null)
+      trong store (KHÔNG persist, không broadcast) → drawer điện thoại không đụng `uistate` sync desktop
+- [x] M19.2 CSS `@media (max-width: 768px)`: `.app` 1 cột (workspace full-width); ribbon + sidebar trái
+      thành drawer overlay trượt (translateX) + right sidebar drawer phải; backdrop mờ; touch targets ≥44px
+- [x] M19.3 App shell: render sidebars luôn trên mobile (drawer), thêm backdrop đóng drawer; auto-đóng
+      drawer khi mở note; hamburger (☰) + nút panel-right trên tab-bar mở drawer thay vì toggle width;
+      ẩn crumbs + nút split trên view-header mobile (chống tràn)
+- [x] M19.4 Edge-swipe: vuốt từ mép trái mở drawer trái, mép phải mở drawer phải, vuốt ngược để đóng
+- [x] M19.5 Format toolbar (component `FormatToolbar`, dùng chung): bold/italic/heading/list/checklist/
+      quote/link/internal-link/code/tag/indent/outdent/undo/redo, thao tác lên editor active qua
+      `lib/activeEditor`; chỉ hiện khi soạn (Live/Source) note .md. Mobile = fixed neo trên bàn phím qua
+      visualViewport; **Desktop = thanh in-flow dưới view-header** (theo yêu cầu người dùng)
+- [x] M19.6 Viewport `viewport-fit=cover` + `interactive-widget=resizes-content` + safe-area insets;
+      verify trên Chrome device emulation 390×844
+
 ### Nhật ký tiến độ
+- 2026-06-11 (Phase 19 — Mobile UI): làm mobile-friendly cho smartphone cảm ứng (tham chiếu Obsidian
+  Mobile). `useIsMobile` (matchMedia 768px) + state cục bộ `mobileDrawer` (KHÔNG persist/broadcast →
+  không đụng uistate sync desktop). CSS `@media ≤768px`: workspace full-width, ribbon+sidebar trái và
+  right sidebar thành drawer overlay trượt (translateX) + backdrop mờ; hamburger (☰) trên tab-bar +
+  edge-swipe mép trái/phải mở/đóng drawer; auto-đóng drawer khi mở note; touch targets ≥36–44px; ẩn
+  crumbs+split để view-header không tràn; status bar ẩn nhường chỗ toolbar. Format toolbar `FormatToolbar`
+  dùng chung qua `lib/activeEditor` (singleton EditorView): 14 nút bold/italic/heading/list/checklist/
+  quote/link/[[ /code/tag/indent/outdent/undo/redo. Theo phản hồi người dùng: **bật cả trên desktop**
+  (thanh in-flow dưới view-header); mobile neo trên bàn phím qua visualViewport. Viewport
+  `viewport-fit=cover` + `interactive-widget=resizes-content` + safe-area insets. Verify Chrome
+  390×844: drawer trái/phải trượt+backdrop, hamburger, toolbar Bold ghi `**` + Undo khôi phục, Reading
+  ẩn toolbar; desktop 1440 không regression + toolbar Bold/Undo OK. typecheck + build web sạch.
 - 2026-06-11 (đợt 5): đổi kiến trúc Reading mode theo yêu cầu — Reading = Live Preview editor
   readonly (một renderer duy nhất), kèm chevron fold callout + syntax highlight code (CM grammar)
   cho pipeline Preview còn lại. Verify: reading là .cm-editor contenteditable=false, callout/

@@ -933,3 +933,130 @@ button { font-family: inherit; }
 .public-unlock { display: flex; flex-direction: column; gap: 10px; max-width: 320px; margin: 18vh auto 0; }
 .public-unlock-title { font-weight: 600; color: var(--text-normal); text-align: center; }
 .public-unlock-error { color: #e5534b; font-size: 13px; text-align: center; }
+
+/* ====================================================================== */
+/* Mobile / responsive (phone, touch) — FR-11                              */
+/* Sidebars become overlay drawers; workspace fills the screen.            */
+/* ====================================================================== */
+.drawer-backdrop {
+  position: fixed; inset: 0; z-index: 55;
+  background: rgba(0, 0, 0, 0.42);
+  animation: fade-in 0.18s ease;
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+@media (max-width: 768px) {
+  /* Single-column: only the workspace is in normal flow; drawers are fixed. */
+  .app.mobile { grid-template-columns: 1fr; }
+
+  /* --- Left drawer = ribbon strip + sidebar panel, slide in together --- */
+  .app.mobile .ribbon {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 60;
+    width: var(--ribbon-width);
+    padding-top: calc(8px + env(safe-area-inset-top));
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.22);
+  }
+  .app.mobile.drawer-left-open .ribbon { transform: translateX(0); }
+
+  .app.mobile .sidebar {
+    position: fixed; top: 0; bottom: 0; left: var(--ribbon-width); z-index: 60;
+    width: calc(min(86vw, 340px) - var(--ribbon-width));
+    padding-top: env(safe-area-inset-top);
+    transform: translateX(calc(-100% - var(--ribbon-width)));
+    transition: transform 0.22s ease;
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.22);
+  }
+  .app.mobile.drawer-left-open .sidebar { transform: translateX(0); }
+
+  /* --- Right drawer --- */
+  .app.mobile .right-sidebar {
+    position: fixed; top: 0; bottom: 0; right: 0; z-index: 60;
+    width: min(86vw, 340px);
+    padding-top: env(safe-area-inset-top);
+    transform: translateX(100%);
+    transition: transform 0.22s ease;
+    box-shadow: -2px 0 16px rgba(0, 0, 0, 0.22);
+  }
+  .app.mobile.drawer-right-open .right-sidebar { transform: translateX(0); }
+
+  /* Workspace fills the viewport; respect the notch at the top. */
+  .app.mobile .tab-bar {
+    height: calc(48px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+  .tab-bar { height: 48px; }
+  .tab { max-width: 56vw; font-size: 14px; padding: 0 8px 0 12px; }
+  .tab .close { opacity: 1; width: 30px; height: 30px; }  /* no hover on touch */
+  .tab .title { font-size: 14px; }
+  .tab-new { width: 46px; }
+  .view-header { min-height: 46px; padding: 6px 8px; gap: 2px; }
+  .view-header .crumbs { display: none; }  /* the tab already shows the note name */
+  .tool-btn { width: 36px; height: 36px; }
+  .seg button { padding: 7px 11px; font-size: 13px; }
+  .nav-header { min-height: 48px; }
+  .nav-action, .vault-footer button { width: 36px; height: 36px; }
+  .vault-footer { padding: 10px calc(10px + env(safe-area-inset-left)); }
+
+  /* Bigger, finger-friendly file-tree rows. */
+  .tree-row { padding: 9px 8px; font-size: 15px; line-height: 1.4; }
+  .tree-row .twisty { width: 28px; height: 28px; }
+  .tree-row .twisty.leaf { width: 12px; }
+  .section-head { padding: 9px 6px; }
+
+  /* Tighter content margins so text uses the narrow screen. */
+  .app.mobile { --file-margins: 14px; }
+  .markdown-preview { padding: 18px 14px 40vh; }
+  .markdown-preview .preview-inner { max-width: 100%; }
+
+  /* The status bar would fight the mobile toolbar for the bottom edge. */
+  .app.mobile .status-bar { display: none; }
+
+  /* Leave room above the formatting toolbar for the last lines. */
+  .app.mobile .cm-content { padding-bottom: 50vh; }
+
+  /* Toast clears the bottom toolbar + home indicator. */
+  .app.mobile .toast { bottom: calc(64px + env(safe-area-inset-bottom)); }
+}
+
+/* Mobile formatting toolbar (above the on-screen keyboard, Obsidian-style). */
+.mobile-toolbar {
+  position: fixed; left: 0; right: 0; z-index: 50;
+  display: flex; gap: 2px; align-items: center;
+  overflow-x: auto; overflow-y: hidden;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--bg-modifier-border);
+  padding: 5px 6px calc(5px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.mobile-toolbar::-webkit-scrollbar { display: none; }
+.mobile-toolbar button {
+  flex: 0 0 auto;
+  width: 42px; height: 40px;
+  border: 0; background: transparent; color: var(--text-muted);
+  border-radius: var(--radius-s);
+  display: grid; place-items: center; cursor: pointer;
+}
+.mobile-toolbar button:active { background: var(--bg-modifier-hover); color: var(--text-normal); }
+
+/* Desktop formatting toolbar — in-flow strip under the view header. */
+.format-toolbar {
+  display: flex; gap: 1px; align-items: center; flex-shrink: 0;
+  padding: 3px 10px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--bg-modifier-border);
+  overflow-x: auto; scrollbar-width: none;
+}
+.format-toolbar::-webkit-scrollbar { display: none; }
+.format-toolbar button {
+  flex: 0 0 auto;
+  width: 30px; height: 30px;
+  border: 0; background: transparent; color: var(--text-faint);
+  border-radius: var(--radius-s);
+  display: grid; place-items: center; cursor: pointer;
+  transition: var(--transition);
+}
+.format-toolbar button:hover { background: var(--bg-modifier-hover); color: var(--text-normal); }

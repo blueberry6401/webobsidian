@@ -36,6 +36,7 @@ import {
   setNoteTitle,
 } from '../lib/livePreview';
 import { renderMarkdown } from '../lib/markdown';
+import { setActiveEditor } from '../lib/activeEditor';
 import { api } from '../lib/api';
 
 const titleOf = (path: string | null) =>
@@ -289,8 +290,12 @@ export default function Editor() {
     });
     const v = new EditorView({ state, parent: host.current });
     view.current = v;
+    setActiveEditor(v);
     v.focus();
-    return () => v.destroy();
+    return () => {
+      setActiveEditor(null);
+      v.destroy();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePath]);
 

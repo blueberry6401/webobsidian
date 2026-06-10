@@ -11,6 +11,7 @@ import Settings from './components/Settings';
 import ContextMenu from './components/ContextMenu';
 import { loadPlugins } from './lib/plugins';
 import { initUrlSync } from './lib/urlsync';
+import { useIsMobile } from './lib/useIsMobile';
 
 export default function App() {
   const authed = useStore((s) => s.authed);
@@ -18,6 +19,10 @@ export default function App() {
   const loadTree = useStore((s) => s.loadTree);
   const leftOpen = useStore((s) => s.leftOpen);
   const rightOpen = useStore((s) => s.rightOpen);
+  const mobileDrawer = useStore((s) => s.mobileDrawer);
+  const setMobileDrawer = useStore((s) => s.setMobileDrawer);
+  const activePath = useStore((s) => s.activePath);
+  const isMobile = useIsMobile();
   const setPalette = useStore((s) => s.setPalette);
   const save = useStore((s) => s.save);
   const toast = useStore((s) => s.toast);
@@ -99,16 +104,73 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [setPalette, save]);
 
+  // Mobile: close the overlay drawer once a note is opened (tap note → read it).
+  useEffect(() => {
+    if (isMobile && useStore.getState().mobileDrawer) setMobileDrawer(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePath]);
+
+  // Mobile: edge-swipe to open/close the drawers (Obsidian Mobile gesture).
+  useEffect(() => {
+    if (!isMobile) return;
+    let sx = 0, sy = 0, fromLeftEdge = false, fromRightEdge = false, tracking = false;
+    const onStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      sx = t.clientX; sy = t.clientY;
+      fromLeftEdge = sx <= 28;
+      fromRightEdge = sx >= window.innerWidth - 28;
+      tracking = true;
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (!tracking) return;
+      tracking = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - sx, dy = t.clientY - sy;
+      if (Math.abs(dx) < 45 || Math.abs(dy) > Math.abs(dx)) return; // mostly-horizontal only
+      const open = useStore.getState().mobileDrawer;
+      if (dx > 0) {
+        if (open === 'right') setMobileDrawer(null);
+        else if (fromLeftEdge && !open) setMobileDrawer('left');
+      } else {
+        if (open === 'left') setMobileDrawer(null);
+        else if (fromRightEdge && !open) setMobileDrawer('right');
+      }
+    };
+    window.addEventListener('touchstart', onStart, { passive: true });
+    window.addEventListener('touchend', onEnd, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', onStart);
+      window.removeEventListener('touchend', onEnd);
+    };
+  }, [isMobile, setMobileDrawer]);
+
   if (checking) return <div className={theme} style={{ height: '100%' }} />;
   if (!authed) return <div className={theme}><Login onAuthed={() => setAuthed(true)} /></div>;
 
+  // On mobile the sidebars are overlay drawers (always mounted, slid in/out by
+  // CSS), driven by the device-local `mobileDrawer` state — not the persisted
+  // leftOpen/rightOpen that sync across desktops.
+  const showLeft = isMobile || leftOpen;
+  const showRight = isMobile || rightOpen;
+  const appCls = [
+    'app',
+    leftOpen ? '' : 'left-closed',
+    rightOpen ? '' : 'right-closed',
+    isMobile ? 'mobile' : '',
+    isMobile && mobileDrawer === 'left' ? 'drawer-left-open' : '',
+    isMobile && mobileDrawer === 'right' ? 'drawer-right-open' : '',
+  ].filter(Boolean).join(' ');
+
   return (
     <div className={theme}>
-      <div className={`app ${leftOpen ? '' : 'left-closed'} ${rightOpen ? '' : 'right-closed'}`}>
+      <div className={appCls}>
         <Ribbon onTheme={() => setTheme((t) => (t === 'theme-dark' ? 'theme-light' : 'theme-dark'))} />
-        {leftOpen && <Sidebar />}
+        {showLeft && <Sidebar />}
         <Workspace />
-        {rightOpen && <RightSidebar />}
+        {showRight && <RightSidebar />}
+        {isMobile && mobileDrawer && (
+          <div className="drawer-backdrop" onClick={() => setMobileDrawer(null)} />
+        )}
       </div>
       <CommandPalette />
       <Settings />

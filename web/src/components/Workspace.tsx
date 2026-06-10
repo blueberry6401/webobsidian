@@ -5,6 +5,8 @@ import Preview from './Preview';
 import GraphView from './GraphView';
 import Icon from './Icon';
 import StatusBar from './StatusBar';
+import FormatToolbar from './FormatToolbar';
+import { useIsMobile } from '../lib/useIsMobile';
 
 function EditorPane() {
   const activePath = useStore((s) => s.activePath);
@@ -46,6 +48,8 @@ export default function Workspace() {
   const notify = useStore((s) => s.notify);
   const toggleLeft = useStore((s) => s.toggleLeft);
   const toggleRight = useStore((s) => s.toggleRight);
+  const setMobileDrawer = useStore((s) => s.setMobileDrawer);
+  const isMobile = useIsMobile();
   const createNote = useStore((s) => s.createNote);
   const goBack = useStore((s) => s.goBack);
   const goForward = useStore((s) => s.goForward);
@@ -208,8 +212,12 @@ export default function Workspace() {
   return (
     <div className="workspace" onPaste={onPaste} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
       <div className="tab-bar">
-        <span className="tab-new" title="Toggle left sidebar (⌘\)" onClick={toggleLeft}>
-          <Icon name="panel-left" size={16} />
+        <span
+          className="tab-new"
+          title={isMobile ? 'Open menu' : 'Toggle left sidebar (⌘\\)'}
+          onClick={() => (isMobile ? setMobileDrawer('left') : toggleLeft())}
+        >
+          <Icon name={isMobile ? 'menu' : 'panel-left'} size={isMobile ? 20 : 16} />
         </span>
         {tabs.map((t) => (
           <div
@@ -249,8 +257,12 @@ export default function Workspace() {
           <Icon name="plus" size={16} />
         </span>
         <span className="grow" style={{ flex: 1 }} />
-        <span className="tab-new" title="Toggle right sidebar" onClick={toggleRight}>
-          <Icon name="panel-right" size={16} />
+        <span
+          className="tab-new"
+          title="Toggle right sidebar"
+          onClick={() => (isMobile ? setMobileDrawer('right') : toggleRight())}
+        >
+          <Icon name="panel-right" size={isMobile ? 20 : 16} />
         </span>
       </div>
 
@@ -279,9 +291,11 @@ export default function Workspace() {
               <button className={`tool-btn ${bookmarks.includes(activePath) ? 'active' : ''}`} title="Bookmark" onClick={() => toggleBookmark(activePath)}>
                 <Icon name="bookmark" size={16} />
               </button>
-              <button className="tool-btn" title="Open to the right" onClick={() => openToSide(activePath)}>
-                <Icon name="columns" size={16} />
-              </button>
+              {!isMobile && (
+                <button className="tool-btn" title="Open to the right" onClick={() => openToSide(activePath)}>
+                  <Icon name="columns" size={16} />
+                </button>
+              )}
               <div className="seg">
                 <button className={viewMode === 'source' ? 'active' : ''} onClick={() => setViewMode('source')} title="Source">
                   Source
@@ -299,6 +313,10 @@ export default function Workspace() {
             <Icon name="more-horizontal" size={18} />
           </button>
         </div>
+      )}
+
+      {!isMobile && activePath && activePath !== GRAPH_PATH && isMd && viewMode !== 'reading' && (
+        <FormatToolbar />
       )}
 
       <div className={`editor-area ${splitDirection === 'down' ? 'split-down' : ''}`}>
@@ -335,6 +353,9 @@ export default function Workspace() {
           </div>
         )}
       </div>
+      {isMobile && activePath && activePath !== GRAPH_PATH && isMd && viewMode !== 'reading' && (
+        <FormatToolbar mobile />
+      )}
       <StatusBar />
     </div>
   );

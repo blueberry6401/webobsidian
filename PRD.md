@@ -1,7 +1,11 @@
 # PRD — WebObsidian
 
 > Product Requirements Document
-> Phiên bản: 0.3 · Cập nhật: 2026-06-10 · Trạng thái: Draft
+> Phiên bản: 0.4 · Cập nhật: 2026-06-11 · Trạng thái: Draft
+> Changelog 0.4: thêm FR-11 (Mobile / responsive UI cho smartphone màn hình cảm ứng) — sidebar trái/phải
+> thành drawer overlay trượt (hamburger + edge-swipe + backdrop), workspace full-width, mobile editing
+> toolbar trên bàn phím (bold/italic/heading/list/checkbox/link/…), touch target ≥44px, safe-area insets.
+> Tham chiếu UX Obsidian Mobile app. Cập nhật NFR khả dụng.
 > Changelog 0.3: mở rộng FR-2 theo phản hồi người dùng — (a) menu "More options" (⋯) trên header mỗi pane
 > (Split right/Split down, Copy screenshot cho Graph, Bookmark, Copy public link, Make a copy, Rename/Move/
 > Copy path/Delete, Close tab/Close others) giống Obsidian; (b) Right sidebar đại tu thành tab strip icon
@@ -187,6 +191,28 @@ webobsidian/
 - **Quản lý tập trung**: Settings → tab "Sharing" liệt kê toàn bộ note đã share, có ô search
   lọc theo path, toggle enable/disable nhanh, copy link, xoá. Tạo share từ context menu của
   note trong file tree ("Copy public link").
+
+---
+
+### FR-11 · Mobile / responsive UI (smartphone cảm ứng)
+Mục tiêu: trải nghiệm **đọc note** và **soạn thảo note** thuận tiện trên điện thoại màn hình cảm ứng,
+tham chiếu UX Obsidian Mobile. Kích hoạt theo breakpoint (`max-width: 768px`) — không phải app riêng,
+cùng một codebase React.
+- **Layout drawer**: ribbon + sidebar trái và right sidebar trở thành **drawer overlay** trượt đè lên
+  nội dung (không đẩy layout). Mặc định đóng → editor chiếm trọn màn hình. Mở bằng: nút hamburger (☰)
+  trên thanh tab, **vuốt từ mép trái/phải** (edge-swipe), hoặc các nút toggle panel. Có **backdrop** mờ;
+  chạm backdrop hoặc chọn note → drawer tự đóng. Drawer trái gồm strip ribbon (chuyển panel Files/Search/
+  Graph/Bookmarks/Tags/Settings) + panel nội dung.
+- **Trạng thái drawer là cục bộ thiết bị** (không persist, không broadcast qua WebSocket) → mở/đóng drawer
+  trên điện thoại không ảnh hưởng trạng thái sidebar của desktop đang đồng bộ chung `uistate`.
+- **Touch targets**: hàng cây thư mục, nút công cụ, tab ≥ 44px; tăng padding chạm; bỏ hover-only affordance
+  (nút close tab luôn hiện trên mobile).
+- **Format toolbar**: thanh công cụ định dạng khi soạn thảo (Live/Source): bold, italic, heading, list,
+  checklist, quote, link, internal link `[[`, code, tag, indent/outdent, undo/redo. Mỗi nút thao tác trực
+  tiếp lên editor đang active. **Mobile**: nổi phía trên bàn phím (neo qua visualViewport) như Obsidian
+  Mobile. **Desktop**: thanh in-flow ngay dưới view-header (theo yêu cầu người dùng).
+- **Viewport & safe-area**: `viewport-fit=cover`; chừa `env(safe-area-inset-*)` cho notch/home-indicator;
+  không cho double-tap zoom (app-like) nhưng giữ pinch-zoom ảnh trong reading.
 
 ---
 

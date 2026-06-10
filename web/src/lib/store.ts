@@ -120,6 +120,9 @@ interface AppState {
   rightOpen: boolean;
   toggleLeft: () => void;
   toggleRight: () => void;
+  /** Mobile-only overlay drawer; device-local (never persisted/broadcast). */
+  mobileDrawer: 'left' | 'right' | null;
+  setMobileDrawer: (d: 'left' | 'right' | null) => void;
 
   paletteOpen: boolean;
   paletteMode: 'all' | 'commands' | 'files';
@@ -321,6 +324,8 @@ export const useStore = create<AppState>()(
       rightOpen: true,
       toggleLeft: () => set((s) => ({ leftOpen: !s.leftOpen })),
       toggleRight: () => set((s) => ({ rightOpen: !s.rightOpen })),
+      mobileDrawer: null,
+      setMobileDrawer: (d) => set({ mobileDrawer: d }),
 
       paletteOpen: false,
       paletteMode: 'all',
