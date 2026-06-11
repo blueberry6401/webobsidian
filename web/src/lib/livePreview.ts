@@ -471,6 +471,130 @@ export const mermaidField = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+/* ---------------- ```html preview (Render HTML button) ---------------- */
+
+/** Toggle the rendered state of the ```html block whose opening fence starts at
+ *  the given position. Tracked in editor state so we can BOTH show the iframe and
+ *  hide the source code block while rendered. */
+export const toggleHtmlRender = StateEffect.define<number>();
+
+/** Positions (opening-fence line starts) whose ```html block is rendered. */
+export const htmlRenderedState = StateField.define<readonly number[]>({
+  create: () => [],
+  update(value, tr) {
+    let v = tr.docChanged ? value.map((p) => tr.changes.mapPos(p, 1)) : [...value];
+    for (const e of tr.effects) {
+      if (e.is(toggleHtmlRender)) {
+        v = v.includes(e.value) ? v.filter((x) => x !== e.value) : [...v, e.value];
+      }
+    }
+    return v;
+  },
+});
+
+/** "Render HTML" / "Hide HTML" toggle for a ```html fenced block. Collapsed it
+ *  sits above the code (which stays visible); rendered it REPLACES the code block
+ *  with a full-width sandboxed iframe (scripts run but isolated — no same-origin,
+ *  so a saved page can't touch the vault/app). */
+class HtmlPreviewWidget extends WidgetType {
+  private onResize: (() => void) | null = null;
+  constructor(readonly code: string, readonly key: number, readonly rendered: boolean) {
+    super();
+  }
+  eq(o: HtmlPreviewWidget) {
+    return o.key === this.key && o.rendered === this.rendered && o.code === this.code;
+  }
+  ignoreEvent() {
+    return false;
+  }
+  toDOM(view: EditorView) {
+    const wrap = document.createElement('div');
+    wrap.className = 'cm-html-preview' + (this.rendered ? ' is-rendered' : '');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cm-html-render-btn';
+    btn.textContent = this.rendered ? 'Hide HTML' : 'Render HTML';
+    btn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      view.dispatch({ effects: toggleHtmlRender.of(this.key) });
+    });
+    wrap.appendChild(btn);
+    if (this.rendered) {
+      const frame = document.createElement('iframe');
+      frame.className = 'cm-html-render-frame';
+      frame.setAttribute('sandbox', 'allow-scripts allow-popups allow-forms allow-modals');
+      frame.srcdoc = this.code;
+      wrap.appendChild(frame);
+      // Break out of the readable-line-width column to the full editor width.
+      // (.is-rendered CSS centres on the scroller via left:50%/translateX; we just
+      //  feed it the scroller's pixel width and keep it in sync on resize.)
+      const sync = () => {
+        wrap.style.width = view.scrollDOM.clientWidth + 'px';
+      };
+      requestAnimationFrame(sync);
+      this.onResize = sync;
+      window.addEventListener('resize', sync);
+    }
+    return wrap;
+  }
+  destroy() {
+    if (this.onResize) window.removeEventListener('resize', this.onResize);
+  }
+}
+
+function buildHtmlPreview(state: EditorState): DecorationSet {
+  if (!state.field(livePreviewState, false)) return Decoration.none;
+  const doc = state.doc;
+  const renderedKeys = state.field(htmlRenderedState, false) ?? [];
+  const ranges: Range<Decoration>[] = [];
+  for (let n = 1; n <= doc.lines; n++) {
+    const line = doc.line(n);
+    const open = line.text.match(/^\s*(`{3,}|~{3,})\s*html\s*$/i);
+    if (!open) continue;
+    let end = -1;
+    for (let j = n + 1; j <= doc.lines; j++) {
+      if (doc.line(j).text.trim().startsWith(open[1][0].repeat(3))) {
+        end = j;
+        break;
+      }
+    }
+    if (end < 0) continue;
+    const key = line.from;
+    const rendered = renderedKeys.includes(key);
+    if (rendered) {
+      // Replace the whole block — hides the source code AND shows the iframe.
+      const code = end > n + 1 ? doc.sliceString(doc.line(n + 1).from, doc.line(end - 1).to) : '';
+      const to = doc.line(end).to;
+      ranges.push(
+        Decoration.replace({ widget: new HtmlPreviewWidget(code, key, true), block: true }).range(line.from, to),
+      );
+    } else {
+      // Button ABOVE the fence (side:-1) — html blocks can be huge (a whole saved
+      // page), so a button after the block would sit off-screen and be unreachable.
+      ranges.push(
+        Decoration.widget({ widget: new HtmlPreviewWidget('', key, false), block: true, side: -1 }).range(line.from),
+      );
+    }
+    n = end;
+  }
+  return Decoration.set(ranges, true);
+}
+
+export const htmlPreviewField = StateField.define<DecorationSet>({
+  create: (state) => buildHtmlPreview(state),
+  update(value, tr) {
+    if (
+      tr.docChanged ||
+      tr.effects.some((e) => e.is(setLivePreviewEnabled) || e.is(setLivePreviewReadonly) || e.is(toggleHtmlRender))
+    ) {
+      return buildHtmlPreview(tr.state);
+    }
+    return value.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
 /* ---------------- callout folding (`[!type]-` / `[!type]+`) ---------------- */
 
 export const toggleCalloutFold = StateEffect.define<number>();

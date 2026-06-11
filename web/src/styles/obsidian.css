@@ -319,6 +319,12 @@ button { font-family: inherit; }
 .tree-row .twisty { width: 18px; height: 18px; display: grid; place-items: center; color: var(--text-faint); flex-shrink: 0; }
 .tree-row .twisty.leaf { width: 8px; }
 .tree-row .name { overflow: hidden; text-overflow: ellipsis; }
+.tree-rename {
+  flex: 1; min-width: 0; font: inherit; color: var(--text-normal);
+  background: var(--bg-primary); border: 1px solid var(--interactive-accent);
+  border-radius: var(--radius-s); padding: 0 4px; margin: -1px 0; outline: none;
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
 .tree-row .bm-star { margin-left: auto; color: #d6a429; flex-shrink: 0; }
 .tree-children { margin-left: 12px; border-left: 1px solid var(--bg-modifier-border); padding-left: 2px; }
 .tree-row.drop-target { background: var(--tag-bg); box-shadow: inset 0 0 0 1px var(--interactive-accent); }
@@ -328,8 +334,14 @@ button { font-family: inherit; }
   background: var(--bg-primary); margin: 0; border-radius: 0; }
 .tab-bar {
   height: var(--header-height); display: flex; align-items: stretch; background: var(--tab-bg);
-  border-bottom: 1px solid var(--bg-modifier-border); overflow-x: auto; flex-shrink: 0;
+  border-bottom: 1px solid var(--bg-modifier-border); overflow: hidden; flex-shrink: 0;
 }
+/* Only the tabs scroll; the toggle/new-note controls stay pinned and never get
+   hidden behind a scrollbar. The scrollbar is hidden so it can't eat the row height. */
+.tab-bar .tab-ctl { flex-shrink: 0; }
+.tab-scroll { display: flex; align-items: stretch; min-width: 0; flex: 0 1 auto;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.tab-scroll::-webkit-scrollbar { display: none; }
 .tab {
   display: flex; align-items: center; gap: 8px; padding: 0 10px 0 14px; cursor: pointer;
   color: var(--text-faint); font-size: 13px; max-width: 200px; white-space: nowrap;
@@ -486,6 +498,20 @@ button { font-family: inherit; }
 /* Mermaid */
 .cm-mermaid { text-align: center; padding: 8px 0; }
 .cm-mermaid.mod-error { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--font-smaller); }
+/* ```html "Render HTML" toggle (block widget around the code fence) */
+.cm-html-preview { white-space: normal; margin: 4px 0 8px; }
+/* When rendered, break out of the readable-line-width column to full editor width.
+   Content is centred on the scroller, so left:50% + translateX(-50%) re-centres a
+   scroller-width box (its px width is set in JS) regardless of column padding. */
+.cm-html-preview.is-rendered { position: relative; left: 50%; transform: translateX(-50%); }
+.cm-html-render-btn { font-family: var(--font-ui); font-size: var(--font-ui-smaller); line-height: 1;
+  padding: 5px 12px; border-radius: var(--radius-s); cursor: pointer; border: none;
+  background: var(--interactive-accent); color: var(--text-on-accent); }
+.cm-html-render-btn:hover { background: var(--interactive-accent-hover); }
+.cm-html-preview.is-rendered .cm-html-render-btn { margin-left: 32px; }
+.cm-html-render-frame { display: block; width: 100%; height: 80vh; margin-top: 8px;
+  border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s);
+  background: #fff; resize: vertical; overflow: auto; }
 /* Callout fold chevron */
 .cm-callout-fold { display: inline-flex; vertical-align: text-bottom; margin-left: 6px; cursor: pointer;
   color: rgb(var(--callout-color, var(--callout-default))); transition: transform var(--transition); }
@@ -560,6 +586,17 @@ button { font-family: inherit; }
 .markdown-preview .tok-self, .markdown-preview .tok-annotation, .markdown-preview .tok-changed { color: var(--color-orange); }
 .markdown-preview .tok-invalid { color: var(--color-red); }
 .markdown-preview pre code { background: transparent; padding: 0; }
+/* ```html render toggle (§ HTML preview) */
+.markdown-preview .html-block { position: relative; margin: .6em 0; }
+.markdown-preview .html-block pre[data-lang]::after { right: 96px; }
+.markdown-preview .html-render-btn { position: absolute; top: 6px; right: 10px; z-index: 1;
+  font-family: var(--font-ui); font-size: var(--font-ui-smaller); line-height: 1;
+  padding: 4px 8px; border-radius: var(--radius-s); cursor: pointer;
+  background: var(--interactive-accent); color: var(--text-on-accent); border: none; }
+.markdown-preview .html-render-btn:hover { background: var(--interactive-accent-hover); }
+.markdown-preview .html-render-frame { display: block; width: 100%; height: 70vh;
+  border: 1px solid var(--bg-modifier-border); border-radius: var(--radius-s);
+  background: #fff; resize: vertical; overflow: auto; }
 .markdown-preview blockquote { border-left: 3px solid var(--interactive-accent); margin: .8em 0; padding: 2px 24px; color: var(--text-normal); }
 .markdown-preview img { max-width: 100%; border-radius: var(--radius); }
 .markdown-preview table { border-collapse: collapse; margin: .6em 0; }

@@ -55,7 +55,7 @@ export default function Workspace() {
   const toggleRight = useStore((s) => s.toggleRight);
   const setMobileDrawer = useStore((s) => s.setMobileDrawer);
   const isMobile = useIsMobile();
-  const createNote = useStore((s) => s.createNote);
+  const newNote = useStore((s) => s.newNote);
   const goBack = useStore((s) => s.goBack);
   const goForward = useStore((s) => s.goForward);
   const openContextMenu = useStore((s) => s.openContextMenu);
@@ -268,52 +268,51 @@ export default function Workspace() {
     <div className="workspace" onPaste={onPaste} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
       <div className="tab-bar">
         <span
-          className="tab-new"
+          className="tab-new tab-ctl"
           title={isMobile ? 'Open menu' : 'Toggle left sidebar (⌘\\)'}
           onClick={() => (isMobile ? setMobileDrawer('left') : toggleLeft())}
         >
           <Icon name={isMobile ? 'menu' : 'panel-left'} size={isMobile ? 20 : 16} />
         </span>
-        {tabs.map((t) => (
-          <div
-            key={t.path}
-            className={`tab ${activePath === t.path ? 'active' : ''}`}
-            onClick={() => openFile(t.path)}
-            onAuxClick={(e) => e.button === 1 && closeTab(t.path)}
-            title={t.path}
-          >
-            {t.path === GRAPH_PATH && (
-              <Icon name="graph" size={13} style={{ marginRight: 4, flexShrink: 0 }} />
-            )}
-            <span className="title">{t.title.replace(/\.(md|markdown)$/, '')}</span>
-            {dirty && activePath === t.path ? (
-              <span className="dot">●</span>
-            ) : (
-              <span
-                className="close"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  closeTab(t.path);
-                }}
-              >
-                <Icon name="x" size={14} />
-              </span>
-            )}
-          </div>
-        ))}
+        <div className="tab-scroll">
+          {tabs.map((t) => (
+            <div
+              key={t.path}
+              className={`tab ${activePath === t.path ? 'active' : ''}`}
+              onClick={() => openFile(t.path)}
+              onAuxClick={(e) => e.button === 1 && closeTab(t.path)}
+              title={t.path}
+            >
+              {t.path === GRAPH_PATH && (
+                <Icon name="graph" size={13} style={{ marginRight: 4, flexShrink: 0 }} />
+              )}
+              <span className="title">{t.title.replace(/\.(md|markdown)$/, '')}</span>
+              {dirty && activePath === t.path ? (
+                <span className="dot">●</span>
+              ) : (
+                <span
+                  className="close"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeTab(t.path);
+                  }}
+                >
+                  <Icon name="x" size={14} />
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
         <span
-          className="tab-new"
+          className="tab-new tab-ctl"
           title="New note (⌘N)"
-          onClick={async () => {
-            const n = prompt('Note name', 'Untitled.md');
-            if (n) await createNote(n.endsWith('.md') ? n : `${n}.md`, `# ${n.replace(/\.md$/, '')}\n`);
-          }}
+          onClick={() => newNote()}
         >
           <Icon name="plus" size={16} />
         </span>
         <span className="grow" style={{ flex: 1 }} />
         <span
-          className="tab-new"
+          className="tab-new tab-ctl"
           title="Toggle right sidebar"
           onClick={() => (isMobile ? setMobileDrawer('right') : toggleRight())}
         >

@@ -20,7 +20,7 @@ function entryIcon(n: TreeNode): string {
 export default function FolderView({ path }: { path: string }) {
   const tree = useStore((s) => s.tree);
   const openFile = useStore((s) => s.openFile);
-  const createNote = useStore((s) => s.createNote);
+  const newNote = useStore((s) => s.newNote);
 
   const node = findNode(tree, path);
   const children = node?.children ?? [];
@@ -31,20 +31,12 @@ export default function FolderView({ path }: { path: string }) {
   );
   const label = (n: TreeNode) => (n.type === 'file' ? n.name.replace(/\.(md|markdown)$/, '') : n.name);
 
-  const newNote = async () => {
-    const n = prompt('Note name', 'Untitled.md');
-    if (n) {
-      const base = n.endsWith('.md') ? n : `${n}.md`;
-      await createNote(`${path}/${base}`, `# ${base.replace(/\.md$/, '')}\n`);
-    }
-  };
-
   return (
     <div className="markdown-preview">
       <div className="preview-inner folder-view">
         <div className="folder-view-head">
           <h1><Icon name="folder" size={26} /> {node?.name ?? path}</h1>
-          <button className="tool-btn" title="New note in this folder" onClick={newNote}>
+          <button className="tool-btn" title="New note in this folder" onClick={() => newNote(path)}>
             <Icon name="plus" size={18} />
           </button>
         </div>

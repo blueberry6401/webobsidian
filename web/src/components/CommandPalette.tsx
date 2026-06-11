@@ -37,7 +37,7 @@ export default function CommandPalette() {
   const save = useStore((s) => s.save);
   const toggleBookmark = useStore((s) => s.toggleBookmark);
   const openDailyNote = useStore((s) => s.openDailyNote);
-  const createNote = useStore((s) => s.createNote);
+  const newNote = useStore((s) => s.newNote);
   const notify = useStore((s) => s.notify);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
@@ -46,10 +46,7 @@ export default function CommandPalette() {
 
   const commands: Cmd[] = useMemo(
     () => [
-      { id: 'new', title: 'New note', hint: '⌘N', run: async () => {
-          const n = prompt('Note name', 'Untitled.md');
-          if (n) await createNote(n.endsWith('.md') ? n : `${n}.md`, `# ${n.replace(/\.md$/, '')}\n`);
-        } },
+      { id: 'new', title: 'New note', hint: '⌘N', run: () => newNote() },
       { id: 'daily', title: 'Open today’s daily note', run: () => openDailyNote() },
       { id: 'save', title: 'Save current file', hint: '⌘S', run: () => save() },
       { id: 'bookmark', title: 'Bookmark current file', run: () => activePath && toggleBookmark(activePath) },
@@ -71,7 +68,7 @@ export default function CommandPalette() {
           }
         } },
     ],
-    [save, setLeftPanel, setGraph, setSettings, setViewMode, activePath, toggleBookmark, openToSide, openDailyNote, createNote, notify],
+    [save, setLeftPanel, setGraph, setSettings, setViewMode, activePath, toggleBookmark, openToSide, openDailyNote, newNote, notify],
   );
 
   const items = useMemo(() => {

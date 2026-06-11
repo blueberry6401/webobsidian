@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-06-12 (Folder picker "Move file to…" + context menu Bookmarks/Recent)
+Cập nhật lần cuối: 2026-06-12 (New folder tạo thẳng + inline rename trong cây thư mục)
 
 ---
 
@@ -320,7 +320,51 @@ Cập nhật lần cuối: 2026-06-12 (Folder picker "Move file to…" + context
       `text/wo-path` mà FileTree đã đọc) + nút hành động hiện khi hover trên mỗi hàng (📁 Move file
       to… và ✕ Remove bookmark / Remove from recent).
 
+## Phase 23 — Render HTML trong ```html code block (theo yêu cầu người dùng)
+- [x] M23.1 Nút "Render HTML" trên mỗi block ` ```html ` — `htmlPreviewField` (StateField block
+      widget trong `livePreview.ts`, đăng ký ở `Editor.tsx`). Vì Reading/Live đều là CodeMirror
+      (M18.14), nút phải nằm trong editor chứ không phải `Preview.tsx`. Widget đặt NGAY TRÊN dòng
+      mở fence (`side: -1`) — block HTML có thể khổng lồ (cả trang lưu ~296KB), nếu đặt sau block
+      thì nút lọt ngoài viewport (CodeMirror ảo hoá DOM) → không bấm được. Click toggle hiện/ẩn
+      `<iframe sandbox="allow-scripts allow-popups allow-forms allow-modals">` (KHÔNG same-origin →
+      script trang lưu chạy nhưng cô lập khỏi vault/cookie/localStorage app), source vẫn hiển thị
+      bên dưới. CSS `.cm-html-preview` + iframe 70vh resize dọc. Cùng nút thêm vào `Preview.tsx`
+      (`setupHtmlPreview`, bọc `.html-block`) cho trang public `/share`. Verify thực tế qua CDP:
+      iframe render đúng trang ChatGPT đã lưu. Typecheck + build sạch.
+- [x] M23.2 (theo phản hồi): khi render thì (a) ẩn luôn code block, (b) iframe full-width pane.
+      Thêm state `htmlRenderedState` + effect `toggleHtmlRender` (giống callout fold) để biết block
+      nào đang render → rendered thì `Decoration.replace` cả block (ẩn code + chèn iframe), collapsed
+      thì chỉ chèn nút phía trên (code vẫn hiện). Full-width: content căn giữa cột `--file-line-width`
+      700px nên `.is-rendered` dùng `left:50% + translateX(-50%)` + width = `view.scrollDOM.clientWidth`
+      (JS, sync on resize) để trải hết bề rộng scroller. Verify CDP: iframe 992px khớp pane, code ẩn,
+      toggle 2 chiều OK.
+
 ### Nhật ký tiến độ
+- 2026-06-12 (New folder không prompt + inline rename trong cây thư mục): action store
+  `newFolder(dir?)` tạo thẳng folder "Untitled" (tự tăng "Untitled 1/2…" nếu trùng), expand
+  ancestor + mở panel Files rồi đặt `renamingPath` = path mới. FileTree thêm component
+  `RenameInput` (ô input bo viền accent thay cho `.name`): autofocus + chọn sẵn phần tên (giữ
+  đuôi file), Enter/blur → `api.rename`, Escape → huỷ; stopPropagation để click/pointerdown
+  không toggle/mở row. Store thêm state `renamingPath` + `setRenamingPath`. Menu "New folder"
+  (FileTree) và nút New folder (Sidebar) gọi `newFolder()`, bỏ `prompt('Folder name')`. Tiện thể
+  chuyển "Rename…" của file/folder sang inline rename (bỏ prompt path); giữ "Move to…" cho việc
+  đổi thư mục. CSS `.tree-rename`. Typecheck + build web sạch.
+- 2026-06-12 (New note không prompt + tab-bar controls không bị scrollbar che): (1) thêm action
+  store `newNote(dir?)` tạo thẳng note "Untitled.md" (tự tăng "Untitled 1/2…" nếu trùng trong
+  folder đích), body rỗng → inline-title hiện tên file như Obsidian, không còn `prompt('Note name')`.
+  Thay mọi điểm gọi: ⌘N (App.tsx), Command palette, tab-bar "+", Sidebar Files header, context menu
+  FileTree (New note trong folder → `newNote(node.path)`), FolderView header. Giữ prompt cho New
+  folder và auto-create theo tên khi click wikilink chưa tồn tại. (2) Tab-bar: bọc danh sách tab
+  vào `.tab-scroll` (overflow-x:auto, ẩn scrollbar `scrollbar-width:none`), các nút điều khiển
+  (toggle trái/phải, "+" new note) gắn class `tab-ctl` flex-shrink:0 nằm ngoài vùng cuộn → không
+  bị scrollbar nuốt chiều cao hay cuộn mất khi nhiều tab. Typecheck web sạch.
+- 2026-06-12 (Phase 23 — Render HTML block): note import từ Trilium chứa full trang HTML (SingleFile)
+  trong ` ```html ` fence. Yêu cầu nút render block. Lần đầu sửa nhầm `Preview.tsx` (component này
+  giờ CHỈ dùng cho trang share — Reading mode thật là CodeMirror editor readonly, M18.14). Fix đúng:
+  thêm `htmlPreviewField` (StateField widget) vào `livePreview.ts` + đăng ký ở `Editor.tsx`. Đặt nút
+  trên đầu block (side:-1) vì CodeMirror ảo hoá DOM — nút sau block khổng lồ sẽ ngoài viewport. iframe
+  sandbox `allow-scripts` không same-origin (cô lập). Giữ luôn nút ở `Preview.tsx` cho `/share`. Verify
+  end-to-end bằng chrome-devtools (login pw 123456): nút hiện, click → iframe render đúng trang. Build sạch.
 - 2026-06-12 (Folder deep-link → Folder view): mở URL trỏ folder (`/note/<folder>`) trước đây bị
   render như note rỗng (Editor) tên folder. Thêm `lib/tree.ts` (`findNode`/`isFolderPath`) + component
   `FolderView.tsx` liệt kê nội dung folder (folder con + note, sort folder trước; thumbnail ảnh; kéo-thả

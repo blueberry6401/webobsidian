@@ -96,10 +96,7 @@ export default function App() {
       if (k === 'p') { e.preventDefault(); setPalette(true, e.shiftKey ? 'commands' : 'commands'); }
       else if (k === 'o') { e.preventDefault(); setPalette(true, 'files'); }
       else if (k === 's') { e.preventDefault(); save(); }
-      else if (k === 'n') { e.preventDefault();
-        const n = prompt('Note name', 'Untitled.md');
-        if (n) s.createNote(n.endsWith('.md') ? n : `${n}.md`, `# ${n.replace(/\.md$/, '')}\n`);
-      }
+      else if (k === 'n') { e.preventDefault(); s.newNote(); }
       else if (k === 'e') { e.preventDefault(); s.setViewMode(s.viewMode === 'reading' ? 'live' : 'reading'); }
       else if (k === 'f' && e.shiftKey) { e.preventDefault(); s.setLeftPanel('search'); }
       else if (k === '\\') { e.preventDefault(); s.toggleLeft(); }

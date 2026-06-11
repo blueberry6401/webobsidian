@@ -168,6 +168,13 @@ interface AppState {
   setContent: (c: string) => void;
   save: () => Promise<void>;
   createNote: (path: string, body?: string) => Promise<void>;
+  /** Obsidian-style: create & open a fresh "Untitled" note (no prompt). `dir` = target folder, '' = vault root. */
+  newNote: (dir?: string) => Promise<void>;
+  /** Obsidian-style: create a fresh "Untitled" folder (no prompt) and start inline-renaming it. */
+  newFolder: (dir?: string) => Promise<void>;
+  /** Tree path currently being inline-renamed (null = none); FileTree shows an input for it. */
+  renamingPath: string | null;
+  setRenamingPath: (path: string | null) => void;
   openDailyNote: () => Promise<void>;
   /** Re-fetch content for the active/split tabs (after reload or remote sync). */
   hydrate: () => Promise<void>;
@@ -475,6 +482,43 @@ export const useStore = create<AppState>()(
         await api.write(path, body ?? '');
         await get().loadTree();
         await get().openFile(path);
+      },
+
+      newNote: async (dir) => {
+        // Pick the first free "Untitled" name in the target folder, like Obsidian.
+        const base = (dir ?? '').replace(/\/+$/, '');
+        const folder = base ? findNode(get().tree, base) : get().tree;
+        const taken = new Set((folder?.children ?? []).map((c) => c.name.toLowerCase()));
+        let name = 'Untitled.md';
+        for (let i = 1; taken.has(name.toLowerCase()); i++) name = `Untitled ${i}.md`;
+        const path = base ? `${base}/${name}` : name;
+        await get().createNote(path, '');
+        if (base) get().revealInTree(path);
+      },
+
+      renamingPath: null,
+      setRenamingPath: (path) => set({ renamingPath: path }),
+
+      newFolder: async (dir) => {
+        // Create an "Untitled" folder (unique name) and drop straight into inline
+        // rename — same as Obsidian, no prompt.
+        const base = (dir ?? '').replace(/\/+$/, '');
+        const parent = base ? findNode(get().tree, base) : get().tree;
+        const taken = new Set((parent?.children ?? []).map((c) => c.name.toLowerCase()));
+        let name = 'Untitled';
+        for (let i = 1; taken.has(name.toLowerCase()); i++) name = `Untitled ${i}`;
+        const path = base ? `${base}/${name}` : name;
+        await api.createFolder(path);
+        await get().loadTree();
+        // Make sure the new row is rendered (expand ancestors + open the Files panel)…
+        if (base) {
+          const segs = base.split('/');
+          const ancestors: string[] = [];
+          let acc = '';
+          for (const s of segs) { acc = acc ? `${acc}/${s}` : s; ancestors.push(acc); }
+          set((st) => ({ expanded: Array.from(new Set([...st.expanded, ...ancestors])) }));
+        }
+        set({ leftPanel: 'files', leftOpen: true, renamingPath: path });
       },
 
       openDailyNote: async () => {

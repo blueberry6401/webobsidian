@@ -54,6 +54,40 @@ const loadMermaid = () =>
   }));
 let mmdSeq = 0;
 
+/** Add a "Render HTML" toggle to a ```html block. Clicking swaps the source
+ *  for a sandboxed iframe (scripts run but isolated — no same-origin, so the
+ *  saved page can't touch the vault/app). Toggles back to source on re-click. */
+function setupHtmlPreview(codeEl: HTMLElement): void {
+  const pre = codeEl.parentElement as HTMLElement | null;
+  if (!pre || pre.parentElement?.classList.contains('html-block')) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'html-block';
+  pre.replaceWith(wrap);
+  wrap.appendChild(pre);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'html-render-btn';
+  btn.textContent = 'Render HTML';
+  wrap.appendChild(btn);
+  let frame: HTMLIFrameElement | null = null;
+  btn.addEventListener('click', () => {
+    if (frame) {
+      frame.remove();
+      frame = null;
+      pre.style.display = '';
+      btn.textContent = 'Render HTML';
+      return;
+    }
+    frame = document.createElement('iframe');
+    frame.className = 'html-render-frame';
+    frame.setAttribute('sandbox', 'allow-scripts allow-popups allow-forms allow-modals');
+    frame.srcdoc = codeEl.textContent ?? '';
+    pre.style.display = 'none';
+    wrap.appendChild(frame);
+    btn.textContent = 'Hide HTML';
+  });
+}
+
 export default function Preview({ source }: { source?: string }) {
   const storeContent = useStore((s) => s.content);
   const content = source ?? storeContent;
@@ -124,6 +158,10 @@ export default function Preview({ source }: { source?: string }) {
     // Code blocks: same grammars + palette as Live Preview.
     for (const codeEl of root.querySelectorAll<HTMLElement>('pre > code[class*="language-"]:not(.language-mermaid)')) {
       void highlightCodeEl(codeEl).catch(() => {});
+    }
+    // ```html blocks get a "Render HTML" toggle (sandboxed iframe preview).
+    for (const codeEl of root.querySelectorAll<HTMLElement>('pre > code.language-html')) {
+      setupHtmlPreview(codeEl);
     }
     const mmd = root.querySelectorAll<HTMLElement>('pre > code.language-mermaid');
     if (mmd.length) {

@@ -1,8 +1,60 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import { api, type TreeNode } from '../lib/api';
 import { pathToUrl } from '../lib/urlsync';
 import Icon from './Icon';
+
+/** Inline rename box shown in place of a tree row's name (Obsidian-style). */
+function RenameInput({ node, onDone }: { node: TreeNode; onDone: () => void }) {
+  const loadTree = useStore((s) => s.loadTree);
+  const closeTab = useStore((s) => s.closeTab);
+  const notify = useStore((s) => s.notify);
+  const ref = useRef<HTMLInputElement>(null);
+  const done = useRef(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    // Select the name but not the extension, like Obsidian.
+    const dot = node.type === 'file' ? node.name.lastIndexOf('.') : -1;
+    el.setSelectionRange(0, dot > 0 ? dot : node.name.length);
+  }, [node.name, node.type]);
+
+  const finish = (commit: boolean) => async () => {
+    if (done.current) return;
+    done.current = true;
+    const name = (ref.current?.value ?? '').trim();
+    onDone();
+    if (!commit || !name || name === node.name) return;
+    const dir = parentDir(node.path);
+    const to = dir ? `${dir}/${name}` : name;
+    if (to === node.path) return;
+    try {
+      await api.rename(node.path, to);
+      closeTab(node.path);
+    } catch (e: any) {
+      notify(e?.message ?? 'Rename failed');
+    }
+    await loadTree();
+  };
+
+  return (
+    <input
+      ref={ref}
+      className="tree-rename"
+      defaultValue={node.name}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); void finish(true)(); }
+        else if (e.key === 'Escape') { e.preventDefault(); void finish(false)(); }
+      }}
+      onBlur={finish(true)}
+    />
+  );
+}
 
 function fileIcon(node: TreeNode): string | null {
   const ext = node.ext ?? '';
@@ -29,7 +81,10 @@ function Node({ node, depth }: { node: TreeNode; depth: number }) {
   const closeTab = useStore((s) => s.closeTab);
   const openContextMenu = useStore((s) => s.openContextMenu);
   const setMovePath = useStore((s) => s.setMovePath);
-  const createNote = useStore((s) => s.createNote);
+  const newNote = useStore((s) => s.newNote);
+  const newFolder = useStore((s) => s.newFolder);
+  const renamingPath = useStore((s) => s.renamingPath);
+  const setRenamingPath = useStore((s) => s.setRenamingPath);
   const toggleBookmark = useStore((s) => s.toggleBookmark);
   const bookmarks = useStore((s) => s.bookmarks);
   const notify = useStore((s) => s.notify);
@@ -37,15 +92,9 @@ function Node({ node, depth }: { node: TreeNode; depth: number }) {
   const shares = useStore((s) => s.shares);
 
   const isFolder = node.type === 'folder';
+  const editing = renamingPath === node.path;
 
-  const doRename = async () => {
-    const to = prompt('Rename / move to (vault-relative path):', node.path);
-    if (to && to !== node.path) {
-      await api.rename(node.path, to);
-      closeTab(node.path);
-      await loadTree();
-    }
-  };
+  const doRename = () => setRenamingPath(node.path);
   const doDelete = async () => {
     if (confirm(`Move "${node.name}" to trash?`)) {
       await api.remove(node.path);
@@ -80,14 +129,8 @@ function Node({ node, depth }: { node: TreeNode; depth: number }) {
     e.stopPropagation();
     const items = isFolder
       ? [
-          { label: 'New note', onClick: async () => {
-              const n = prompt('Note name', 'Untitled.md');
-              if (n) await createNote(`${node.path}/${n.endsWith('.md') ? n : n + '.md'}`, `# ${n.replace(/\.md$/, '')}\n`);
-            } },
-          { label: 'New folder', onClick: async () => {
-              const n = prompt('Folder name', 'Folder');
-              if (n) { await api.createFolder(`${node.path}/${n}`); await loadTree(); }
-            } },
+          { label: 'New note', onClick: () => newNote(node.path) },
+          { label: 'New folder', onClick: () => newFolder(node.path) },
           { label: '', separator: true },
           { label: 'Rename…', onClick: doRename },
           { label: 'Move folder to…', onClick: doMove },
@@ -147,7 +190,11 @@ function Node({ node, depth }: { node: TreeNode; depth: number }) {
           <span className="twisty">
             <Icon name={open ? 'chevron-down' : 'chevron-right'} size={14} />
           </span>
-          <span className="name">{node.name}</span>
+          {editing ? (
+            <RenameInput node={node} onDone={() => setRenamingPath(null)} />
+          ) : (
+            <span className="name">{node.name}</span>
+          )}
         </div>
         {open && (
           <div className="tree-children">
@@ -174,7 +221,11 @@ function Node({ node, depth }: { node: TreeNode; depth: number }) {
       >
         <span className="twisty leaf" />
         {fi && <span className="twisty"><Icon name={fi} size={14} /></span>}
-        <span className="name">{node.name.replace(/\.(md|markdown)$/, '')}</span>
+        {editing ? (
+          <RenameInput node={node} onDone={() => setRenamingPath(null)} />
+        ) : (
+          <span className="name">{node.name.replace(/\.(md|markdown)$/, '')}</span>
+        )}
         {shares.some((s) => s.path === node.path && s.enabled) && (
           <Icon name="globe" size={12} className="share-globe" />
         )}
