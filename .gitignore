@@ -11,3 +11,5 @@ server/dist/
 server/public/
 coverage/
 *.tsbuildinfo
+# Local agent runbooks/skills — may contain server creds; never commit.
+.claude/skills/
