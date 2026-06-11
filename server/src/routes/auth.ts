@@ -1,18 +1,27 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { asyncHandler } from '../middleware/error.js';
 import { COOKIE_NAME, requireAuth } from '../middleware/auth.js';
 import { isPasswordSet, setPassword, checkPassword, issueToken } from '../services/auth.js';
-import { config } from '../config.js';
 
 export const authRouter = Router();
 
-const cookieOpts = {
-  httpOnly: true,
-  sameSite: 'lax' as const,
-  secure: config.isProd,
-  maxAge: 30 * 24 * 60 * 60 * 1000,
-  path: '/',
-};
+// A `Secure` cookie is silently dropped by browsers over plain http://, so tying
+// it to NODE_ENV broke HTTP-only self-hosting (every API call 401'd → blank UI).
+// Default 'auto' = match the request's actual transport (honours X-Forwarded-Proto
+// via `trust proxy`); set COOKIE_SECURE=true/false to force.
+const COOKIE_SECURE = (process.env.COOKIE_SECURE ?? 'auto').toLowerCase();
+
+function cookieOpts(req: Request) {
+  const secure =
+    COOKIE_SECURE === 'true' ? true : COOKIE_SECURE === 'false' ? false : req.secure;
+  return {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    secure,
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    path: '/',
+  };
+}
 
 authRouter.get(
   '/status',
@@ -35,7 +44,7 @@ authRouter.post(
     }
     await setPassword(password);
     const token = await issueToken();
-    res.cookie(COOKIE_NAME, token, cookieOpts).json({ ok: true });
+    res.cookie(COOKIE_NAME, token, cookieOpts(req)).json({ ok: true });
   }),
 );
 
@@ -48,7 +57,7 @@ authRouter.post(
       return;
     }
     const token = await issueToken();
-    res.cookie(COOKIE_NAME, token, cookieOpts).json({ ok: true });
+    res.cookie(COOKIE_NAME, token, cookieOpts(req)).json({ ok: true });
   }),
 );
 
