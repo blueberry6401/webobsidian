@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useStore, type ContextMenuItem } from '../lib/store';
 import { api, type TreeNode } from '../lib/api';
+import { useIsMobile } from '../lib/useIsMobile';
 import Icon from './Icon';
 import Preview from './Preview';
 import {
@@ -88,6 +89,7 @@ export default function CanvasView() {
   const tree = useStore((s) => s.tree);
   const notify = useStore((s) => s.notify);
   const openContextMenu = useStore((s) => s.openContextMenu);
+  const isMobile = useIsMobile();
 
   const [data, setData] = useState<CanvasData>(() => parseCanvas(storeContent));
   const [view, setView] = useState({ tx: 60, ty: 60, scale: 1 });
@@ -1122,7 +1124,7 @@ export default function CanvasView() {
               onContextMenu={(e) => openNodeMenu(e, n)}
             >
               <div className="canvas-group-label">{(n as any).label ?? 'Group'}</div>
-              {renderHandlesAndPorts(n)}
+              {renderHandlesAndPorts(n, sel.nodes.has(n.id), hoverNode === n.id || sel.nodes.has(n.id))}
             </div>
           );
         })}
@@ -1548,8 +1550,19 @@ export default function CanvasView() {
   );
 
   function renderHandlesAndPorts(n: CanvasNode, selected = false, showPorts = false, activeSide?: CanvasSide) {
+    const showGrip = isMobile || selected || hoverNode === n.id;
     return (
       <>
+        {showGrip && (
+          <div
+            className="canvas-node-grip"
+            title="Drag to move"
+            onPointerDown={(e) => beginNodeDrag(e, n.id)}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            <Icon name="grip" size={14} />
+          </div>
+        )}
         {showPorts &&
           SIDES.map((s) => {
             const cls = `canvas-port port-${s}${activeSide === s ? ' active' : ''}`;

@@ -378,6 +378,13 @@ Cập nhật lần cuối: 2026-06-12 (M3.6 — Trash UI FR-1: xem/Restore/xoá 
       "New canvas" vào context menu FileTree (file/folder/root) + command palette. Typecheck web sạch.
 
 ### Nhật ký tiến độ
+- 2026-06-13 (Phase 25s — Canvas drag handle + fix node lẹm trái trên mobile): (1) **drag handle** (grip
+  chấm) nổi trên đỉnh mỗi node — tap/giữ-kéo để di chuyển node (tiện cho touch); hiện khi hover/selected và
+  **luôn hiện trên mobile**; `onPointerDown→beginNodeDrag`, `touch-action:none`. (2) **fix node bị lẹm một
+  miếng bên trái ở vài mức zoom trên mobile Safari**: `.canvas-world` đang `width:0;height:0` → Safari clip
+  descendant scaled nằm trái/trên gốc → đổi thành `width:100%;height:100%;overflow:visible`. Smoke-test
+  (viewport 390px): node render đủ viền trái; grip kéo node bằng touch +200/+150 và mouse −150/−100; pan nền
+  vẫn +120; không lỗi console. Typecheck + build sạch. Deploy prod.
 - 2026-06-12 (Phase 25r — Canvas mobile: pinch-zoom + toolbar không overlap): trên điện thoại canvas không
   pinch-zoom được (`touch-action:none` chặn gesture trình duyệt) và 2 toolbar dưới đè nhau. Fix: (1)
   **pinch-to-zoom + 2-ngón pan** qua listener pointer **capture-phase** trên viewport (ngón thứ 2 hủy drag

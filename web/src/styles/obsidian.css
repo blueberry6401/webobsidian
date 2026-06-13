@@ -1339,7 +1339,9 @@ button { font-family: inherit; }
   user-select: none;
   cursor: grab;
 }
-.canvas-world { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+/* Fill the viewport (not 0×0): a zero-size transformed box makes mobile Safari
+   clip scaled descendants that sit left/above the origin → nodes lost a left strip. */
+.canvas-world { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; transform-origin: 0 0; }
 .canvas-edges { pointer-events: none; }
 .canvas-edges .canvas-edge-hit { pointer-events: stroke; cursor: pointer; }
 .canvas-edge { pointer-events: none; transition: stroke .08s; }
@@ -1458,6 +1460,19 @@ button { font-family: inherit; }
 .resize-s { bottom: -4px; left: 12px; right: 12px; height: 8px; cursor: ns-resize; }
 .resize-e { right: -4px; top: 12px; bottom: 12px; width: 8px; cursor: ew-resize; }
 .resize-w { left: -4px; top: 12px; bottom: 12px; width: 8px; cursor: ew-resize; }
+
+/* Drag handle — tap/click-hold to move the node (esp. on touch) */
+.canvas-node-grip {
+  position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 18px; border-radius: 9px;
+  background: var(--background-primary); border: 1px solid var(--background-modifier-border);
+  box-shadow: 0 1px 3px rgba(0,0,0,.22);
+  color: var(--text-muted); cursor: grab; z-index: 9; touch-action: none;
+}
+.canvas-node-grip:hover { color: var(--text-normal); }
+.canvas-node-grip:active { cursor: grabbing; }
+@media (max-width: 768px) { .canvas-node-grip { width: 44px; height: 26px; top: -16px; } }
 
 /* Connection ports (side dots) */
 .canvas-port {
