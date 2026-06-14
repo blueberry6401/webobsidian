@@ -1,5 +1,5 @@
 import { useStore } from '../lib/store';
-import FileTree from './FileTree';
+import FileTree, { collectFolderPaths } from './FileTree';
 import SearchPanel from './SearchPanel';
 import TagsPanel from './TagsPanel';
 import BookmarksPanel from './BookmarksPanel';
@@ -16,10 +16,40 @@ export default function Sidebar() {
   const leftPanel = useStore((s) => s.leftPanel);
   const loadTree = useStore((s) => s.loadTree);
   const newNote = useStore((s) => s.newNote);
+  const newCanvas = useStore((s) => s.newCanvas);
   const newFolder = useStore((s) => s.newFolder);
   const setSettings = useStore((s) => s.setSettings);
   const setTrash = useStore((s) => s.setTrash);
-  const vaultName = useStore((s) => s.tree?.name) || 'Vault';
+  const tree = useStore((s) => s.tree);
+  const expanded = useStore((s) => s.expanded);
+  const setExpanded = useStore((s) => s.setExpanded);
+  const treeSort = useStore((s) => s.treeSort);
+  const setTreeSort = useStore((s) => s.setTreeSort);
+  const autoReveal = useStore((s) => s.autoReveal);
+  const toggleAutoReveal = useStore((s) => s.toggleAutoReveal);
+  const openContextMenu = useStore((s) => s.openContextMenu);
+  const vaultName = tree?.name || 'Vault';
+
+  const allCollapsed = expanded.length === 0;
+  const toggleCollapseAll = () => setExpanded(allCollapsed ? collectFolderPaths(tree) : []);
+
+  const openSortMenu = (e: React.MouseEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    openContextMenu({
+      x: r.left,
+      y: r.bottom + 4,
+      items: [
+        { label: 'File name (A to Z)', icon: treeSort === 'name-asc' ? 'check' : undefined, onClick: () => setTreeSort('name-asc') },
+        { label: 'File name (Z to A)', icon: treeSort === 'name-desc' ? 'check' : undefined, onClick: () => setTreeSort('name-desc') },
+        { label: '', separator: true },
+        { label: 'Modified time (new to old)', icon: treeSort === 'mtime-desc' ? 'check' : undefined, onClick: () => setTreeSort('mtime-desc') },
+        { label: 'Modified time (old to new)', icon: treeSort === 'mtime-asc' ? 'check' : undefined, onClick: () => setTreeSort('mtime-asc') },
+        { label: '', separator: true },
+        { label: 'Created time (new to old)', icon: treeSort === 'ctime-desc' ? 'check' : undefined, onClick: () => setTreeSort('ctime-desc') },
+        { label: 'Created time (old to new)', icon: treeSort === 'ctime-asc' ? 'check' : undefined, onClick: () => setTreeSort('ctime-asc') },
+      ],
+    });
+  };
 
   return (
     <div className="sidebar">
@@ -28,10 +58,30 @@ export default function Sidebar() {
         {leftPanel === 'files' && (
           <>
             <button className="nav-action" title="New note" onClick={() => newNote()}>
-              <Icon name="file-plus" size={16} />
+              <Icon name="square-pen" size={16} />
+            </button>
+            <button className="nav-action" title="New canvas" onClick={() => newCanvas()}>
+              <Icon name="layout-dashboard" size={16} />
             </button>
             <button className="nav-action" title="New folder" onClick={() => newFolder()}>
               <Icon name="folder-plus" size={16} />
+            </button>
+            <button className="nav-action" title="Change sort order" onClick={openSortMenu}>
+              <Icon name="arrow-up-narrow-wide" size={16} />
+            </button>
+            <button
+              className={`nav-action ${autoReveal ? 'active' : ''}`}
+              title="Auto reveal current file"
+              onClick={() => toggleAutoReveal()}
+            >
+              <Icon name="crosshair" size={16} />
+            </button>
+            <button
+              className="nav-action"
+              title={allCollapsed ? 'Expand all' : 'Collapse all'}
+              onClick={toggleCollapseAll}
+            >
+              <Icon name={allCollapsed ? 'chevrons-up-down' : 'chevrons-down-up'} size={16} />
             </button>
             <button className="nav-action" title="Refresh" onClick={() => loadTree()}>
               <Icon name="refresh-cw" size={16} />

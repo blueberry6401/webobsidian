@@ -6,6 +6,11 @@ import { findNode } from './tree';
 export const CLIENT_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 export type ViewMode = 'live' | 'source' | 'reading';
+export type TreeSort =
+  | 'name-asc' | 'name-desc'
+  | 'mtime-desc' | 'mtime-asc'
+  | 'ctime-desc' | 'ctime-asc';
+const TREE_SORTS: TreeSort[] = ['name-asc', 'name-desc', 'mtime-desc', 'mtime-asc', 'ctime-desc', 'ctime-asc'];
 
 /** Sentinel tab path for the Graph view (it lives in a tab, like Obsidian). */
 export const GRAPH_PATH = 'graph://view';
@@ -99,6 +104,12 @@ interface AppState {
   // expanded folders in the file tree (persisted)
   expanded: string[];
   toggleFolder: (path: string) => void;
+  setExpanded: (paths: string[]) => void;
+  // file tree sort order + auto-reveal active file (both persisted)
+  treeSort: TreeSort;
+  setTreeSort: (s: TreeSort) => void;
+  autoReveal: boolean;
+  toggleAutoReveal: () => void;
 
   // split pane (open to the side)
   splitPath: string | null;
@@ -201,6 +212,7 @@ const TEXT_RE = /\.(md|markdown|txt|json|csv|canvas|css|js|ya?ml)$/i;
 const PERSIST_KEYS = [
   'tabs', 'activePath', 'viewMode', 'expanded', 'splitPath', 'splitDirection',
   'recent', 'bookmarks', 'leftPanel', 'rightPanel', 'leftOpen', 'rightOpen', 'graphSettings',
+  'treeSort', 'autoReveal',
 ] as const;
 
 function pickPersisted(s: any): Record<string, unknown> {
@@ -234,6 +246,8 @@ function applyPersisted(s: any, set: (p: any) => void): void {
     activePath: typeof s.activePath === 'string' ? s.activePath : null,
     viewMode: ['live', 'source', 'reading'].includes(s.viewMode) ? s.viewMode : 'live',
     expanded: Array.isArray(s.expanded) ? s.expanded : [],
+    treeSort: TREE_SORTS.includes(s.treeSort) ? s.treeSort : 'name-asc',
+    autoReveal: s.autoReveal === true,
     splitPath: typeof s.splitPath === 'string' ? s.splitPath : null,
     splitDirection: s.splitDirection === 'down' ? 'down' : 'right',
     recent: Array.isArray(s.recent) ? s.recent : [],
@@ -329,6 +343,11 @@ export const useStore = create<AppState>()(
             ? s.expanded.filter((p) => p !== path)
             : [...s.expanded, path],
         })),
+      setExpanded: (paths) => set({ expanded: paths }),
+      treeSort: 'name-asc',
+      setTreeSort: (treeSort) => set({ treeSort }),
+      autoReveal: false,
+      toggleAutoReveal: () => set((s) => ({ autoReveal: !s.autoReveal })),
 
       splitPath: null,
       splitContent: '',

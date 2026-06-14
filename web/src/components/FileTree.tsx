@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useStore } from '../lib/store';
+import { useStore, type TreeSort } from '../lib/store';
 import { api, type TreeNode } from '../lib/api';
 import { findNode } from '../lib/tree';
 import { pathToUrl } from '../lib/urlsync';
@@ -310,8 +310,49 @@ function Node({ node, depth }: { node: TreeNode; depth: number }) {
   );
 }
 
+/** All folder paths in the tree (used by the header's Expand-all button). */
+export function collectFolderPaths(root: TreeNode | null): string[] {
+  if (!root) return [];
+  const out: string[] = [];
+  const walk = (n: TreeNode) => {
+    for (const c of n.children ?? []) {
+      if (c.type === 'folder') { out.push(c.path); walk(c); }
+    }
+  };
+  walk(root);
+  return out;
+}
+
+/**
+ * Recursively sort a tree's children by the chosen order. Folders are always
+ * grouped first and ordered by name (like Obsidian); the time/name criterion
+ * applies to files. Only rendered (expanded) folders' children are shown, so
+ * this naturally sorts just what's visible in the panel.
+ */
+function sortTree(node: TreeNode, order: TreeSort): TreeNode {
+  if (!node.children) return node;
+  const cmp = (a: TreeNode, b: TreeNode): number => {
+    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+    if (a.type === 'folder') return a.name.localeCompare(b.name);
+    switch (order) {
+      case 'name-desc': return -a.name.localeCompare(b.name);
+      case 'mtime-desc': return (b.mtime ?? 0) - (a.mtime ?? 0);
+      case 'mtime-asc': return (a.mtime ?? 0) - (b.mtime ?? 0);
+      case 'ctime-desc': return (b.ctime ?? 0) - (a.ctime ?? 0);
+      case 'ctime-asc': return (a.ctime ?? 0) - (b.ctime ?? 0);
+      default: return a.name.localeCompare(b.name); // name-asc
+    }
+  };
+  const children = node.children
+    .map((c) => (c.type === 'folder' ? sortTree(c, order) : c))
+    .sort(cmp);
+  return { ...node, children };
+}
+
 export default function FileTree() {
-  const tree = useStore((s) => s.tree);
+  const rawTree = useStore((s) => s.tree);
+  const treeSort = useStore((s) => s.treeSort);
+  const tree = rawTree ? sortTree(rawTree, treeSort) : rawTree;
   const loadTree = useStore((s) => s.loadTree);
   const notify = useStore((s) => s.notify);
   const closeTab = useStore((s) => s.closeTab);
@@ -321,6 +362,25 @@ export default function FileTree() {
   const newNote = useStore((s) => s.newNote);
   const newCanvas = useStore((s) => s.newCanvas);
   const newFolder = useStore((s) => s.newFolder);
+  const activePath = useStore((s) => s.activePath);
+  const autoReveal = useStore((s) => s.autoReveal);
+  const setExpanded = useStore((s) => s.setExpanded);
+
+  // Auto-reveal: when enabled, expand ancestors of the active file + scroll to it.
+  useEffect(() => {
+    if (!autoReveal || !activePath || !activePath.includes('.')) return;
+    const segs = activePath.split('/');
+    segs.pop();
+    const ancestors: string[] = [];
+    let acc = '';
+    for (const s of segs) { acc = acc ? `${acc}/${s}` : s; ancestors.push(acc); }
+    const cur = useStore.getState().expanded;
+    const missing = ancestors.filter((a) => !cur.includes(a));
+    if (missing.length) setExpanded([...cur, ...missing]);
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('wo-reveal-file', { detail: { path: activePath } }));
+    }, 60);
+  }, [activePath, autoReveal, setExpanded]);
 
   // "Reveal file in navigation": scroll + flash the row once its folders expand.
   useEffect(() => {

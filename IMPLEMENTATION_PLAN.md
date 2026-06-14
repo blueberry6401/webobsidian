@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-06-14 (Phase 26 — Ảnh resize + zoom lightbox FR-2: kéo handle resize ghi `|W` vào source [wikilink + markdown image], click ảnh mở lightbox wheel/pinch zoom + pan ở cả Live & Reading; typecheck sạch)
+Cập nhật lần cuối: 2026-06-15 (Phase 29 — Sort by modified/created time nhanh nhờ statCache trong RAM [fill 1 lần + watcher invalidate], dropdown Files có đủ 6 kiểu sort; typecheck + build sạch)
 
 ---
 
@@ -392,6 +392,35 @@ Cập nhật lần cuối: 2026-06-14 (Phase 26 — Ảnh resize + zoom lightbox
       (`.cm-image-resize`) + `.image-lightbox*` + cursor `zoom-in`. Typecheck sạch.
 
 ### Nhật ký tiến độ
+- 2026-06-15 (Phase 29 — Sort by modified/created time, nhanh nhờ stat cache): thêm 4 lựa chọn sort theo
+  thời gian (Modified/Created · new→old / old→new) vào dropdown header Files. **Nhanh**: server giữ
+  `statCache` (Map path→{mtime,ctime}) trong RAM — `listTree()` fill 1 lần (stat song song theo từng thư mục),
+  steady-state đọc cache → 0 syscall; watcher gọi `invalidateStat(rel)` khi file add/change/unlink nên chỉ
+  re-stat đúng file đổi. Tránh hẳn vấn đề 27k stat/lần-fetch mà comment cũ cảnh báo. `TreeNode` thêm `ctime`
+  (server lấy `birthtimeMs || mtimeMs`). Sort client-side đệ quy per-folder (folder luôn nhóm trước, sort theo
+  tên; file theo tiêu chí chọn) — đúng như Obsidian chỉ sort các item **đang hiện diện** trong panel (collapsed
+  không render). `treeSort` mở rộng 6 giá trị, persist. Typecheck + build sạch.
+- 2026-06-14 (Phase 28 — File tree header toolbar parity Obsidian theo yêu cầu người dùng): dựng lại header
+  sidebar Files đủ nút như Obsidian: **New note** (icon `square-pen`), **New canvas** (`layout-dashboard`),
+  **New folder** (`folder-plus`), **Change sort order** (dropdown: File name A→Z / Z→A, có ✓ ở mục đang
+  chọn — `treeSort` persisted, sort đệ quy client-side, folder luôn trước), **Auto reveal current file**
+  (toggle `autoReveal` persisted — tự expand ancestors + scroll tới file active khi đổi file), **Collapse all /
+  Expand all** (1 nút đổi trạng thái theo `expanded.length`; expand-all gom mọi folder path qua
+  `collectFolderPaths`), + giữ Refresh/Trash. Store: `setExpanded`, `treeSort/setTreeSort`,
+  `autoReveal/toggleAutoReveal` (thêm vào PERSIST_KEYS + applyPersisted). CSS: `.nav-header` cho `flex-wrap`
+  (8 nút không tràn trên mobile), `.nav-action.active` màu accent. LƯU Ý: sort theo modified/created time chưa
+  làm vì server cố tình không stat mtime từng file (~27k file → 27k syscall mỗi lần fetch tree). Typecheck +
+  build sạch; bundle chứa đủ chuỗi nút.
+- 2026-06-14 (Phase 27 — Canvas mobile edit-save + nút New canvas theo phản hồi người dùng): (1) **fix
+  Android Chrome không lưu được text khi double-tap edit node**: nguyên nhân là blur của `<textarea>`
+  thường KHÔNG kích hoạt khi bàn phím mềm Android đóng → edit mất. Thêm `commitTextEdit()` (idempotent,
+  guard qua `editingNodeRef`) gom mọi đường lưu, và **listener `pointerdown` capture-phase trên document**
+  (chạy khi đang edit): chạm/click ra ngoài textarea (trừ `.canvas-textmenu/.canvas-linkpicker/.canvas-notepicker`)
+  → commit. onBlur/linkPicker-dismiss nay cũng route qua `commitTextEdit`. (2) **double-tap touch tự nhận
+  diện** trong `beginNodeDrag` (2 tap <350ms cùng node) → `activateNode` (text→edit, file→open, link→open)
+  vì Android không sinh `dblclick` đáng tin. (3) **nút "New canvas"** (icon `layout-dashboard`) trên header
+  sidebar Files cạnh New note/New folder — trước chỉ tạo được canvas qua right-click (không khả dụng trên
+  mobile). Typecheck + build sạch; bundle chứa selector tap-outside + ngưỡng 350ms.
 - 2026-06-14 (Phase 26 — Ảnh: resize + zoom lightbox theo yêu cầu người dùng): (1) **kéo để resize** ảnh
   nhúng — 2 thanh handle trái/phải hiện khi hover trong Live Preview, kéo đổi rộng (clamp 40..bề rộng content,
   giữ tỉ lệ height auto) và **ghi lại vào source** dạng size param Obsidian qua `writeImageWidth()`:

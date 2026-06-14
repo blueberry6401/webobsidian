@@ -30,7 +30,7 @@ import { initSearch, qmd } from './services/search.js';
 import { buildLinkGraph, updateLinkGraphForFile } from './services/links.js';
 import { buildFileIndex, indexFile, unindexFile } from './services/fileindex.js';
 import { setBroadcaster, broadcast } from './services/realtime.js';
-import { getVaultRoot, ensureVault } from './services/vault.js';
+import { getVaultRoot, ensureVault, invalidateStat } from './services/vault.js';
 import { startAutoSync } from './services/autosync.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -246,6 +246,8 @@ function startWatcher(root: string, usePolling: boolean) {
     // keep the attachment/file index in sync for embed resolution
     if (type === 'add') indexFile(rel);
     else if (type === 'unlink') unindexFile(rel);
+    // Drop the cached mtime/ctime so the next listTree re-stats just this file.
+    invalidateStat(rel);
     if (/\.(md|markdown)$/i.test(rel)) {
       // Update only the changed file in the search + link indexes (O(1)) — a full
       // buildLinkGraph() re-reads every note in the vault and was the main CPU sink

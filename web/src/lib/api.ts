@@ -7,6 +7,7 @@ export interface TreeNode {
   ext?: string;
   size?: number;
   mtime?: number;
+  ctime?: number;
   children?: TreeNode[];
 }
 

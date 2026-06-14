@@ -8,8 +8,34 @@ export interface TreeNode {
   type: 'file' | 'folder';
   ext?: string;
   size?: number;
-  mtime?: number;
+  mtime?: number; // last-modified (ms) — for sort-by-modified-time
+  ctime?: number; // created/birth (ms) — for sort-by-created-time
   children?: TreeNode[];
+}
+
+/**
+ * In-memory mtime/ctime cache so sort-by-time costs ONE stat per file total,
+ * not 27k stats on every tree fetch (the tree is refetched on each fs event).
+ * Filled lazily during listTree(); the file watcher invalidates changed paths
+ * (see invalidateStat), so steady-state tree fetches do zero extra syscalls.
+ */
+const statCache = new Map<string, { m: number; c: number }>();
+
+export function invalidateStat(rel: string): void {
+  statCache.delete(rel);
+}
+
+async function fileStat(abs: string, rel: string): Promise<{ m: number; c: number }> {
+  const hit = statCache.get(rel);
+  if (hit) return hit;
+  let v = { m: 0, c: 0 };
+  try {
+    const st = await fs.stat(abs);
+    // birthtime can be 0 on some Linux filesystems → fall back to mtime.
+    v = { m: st.mtimeMs, c: st.birthtimeMs || st.mtimeMs };
+  } catch { /* file vanished mid-walk — leave zeros */ }
+  statCache.set(rel, v);
+  return v;
 }
 
 const TEXT_EXTS = new Set([
@@ -80,36 +106,31 @@ export async function listTree(): Promise<TreeNode> {
 
   async function walk(absDir: string): Promise<TreeNode[]> {
     const entries = await fs.readdir(absDir, { withFileTypes: true });
-    const nodes: TreeNode[] = [];
-    for (const e of entries) {
-      if (IGNORED.has(e.name) || e.name.startsWith('.')) continue; // hide dotfiles like Obsidian
-      const abs = path.join(absDir, e.name);
-      const rel = toRel(root, abs);
-      if (e.isDirectory()) {
-        nodes.push({
-          name: e.name,
-          path: rel,
-          type: 'folder',
-          children: await walk(abs),
-        });
-      } else if (e.isFile()) {
-        // No per-file fs.stat() here: with ~27k files it meant 27k syscalls on
-        // every tree fetch (and the tree is refetched on each fs event). The UI
-        // doesn't use size/mtime, so the dirent alone is enough.
-        nodes.push({
-          name: e.name,
-          path: rel,
-          type: 'file',
-          ext: path.extname(e.name).toLowerCase(),
-        });
-      }
-    }
-    // folders first, then alphabetical
-    nodes.sort((a, b) => {
+    // Stat files concurrently per directory (cached) so the one-time fill is fast;
+    // steady state reads from statCache → no syscalls. mtime/ctime power sort-by-time.
+    const nodes = await Promise.all(
+      entries
+        .filter((e) => !(IGNORED.has(e.name) || e.name.startsWith('.'))) // hide dotfiles like Obsidian
+        .map(async (e): Promise<TreeNode | null> => {
+          const abs = path.join(absDir, e.name);
+          const rel = toRel(root, abs);
+          if (e.isDirectory()) {
+            return { name: e.name, path: rel, type: 'folder', children: await walk(abs) };
+          }
+          if (e.isFile()) {
+            const { m, c } = await fileStat(abs, rel);
+            return { name: e.name, path: rel, type: 'file', ext: path.extname(e.name).toLowerCase(), mtime: m, ctime: c };
+          }
+          return null;
+        }),
+    );
+    const out = nodes.filter((n): n is TreeNode => n !== null);
+    // folders first, then alphabetical (client re-sorts by the chosen order)
+    out.sort((a, b) => {
       if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
-    return nodes;
+    return out;
   }
 
   return { name: path.basename(root), path: '', type: 'folder', children: await walk(root) };

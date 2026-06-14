@@ -131,7 +131,33 @@ export default function CanvasView() {
   viewRef.current = view;
   const selRef = useRef(sel);
   selRef.current = sel; // always-current selection for menu/handler callbacks
+  const editingNodeRef = useRef<string | null>(null);
+  editingNodeRef.current = editingNode; // current edit target for blur/tap-outside commit
+  const lastTap = useRef<{ id: string; t: number } | null>(null); // touch double-tap detector
   const fittedFor = useRef<string | null>(null); // canvas we've already zoom-fitted
+
+  // Commit the text card currently being edited and exit edit mode. Idempotent:
+  // multiple calls in the same tick (e.g. tap-outside + blur on desktop) no-op after
+  // the first. The doc-level listener below makes saving reliable on Android Chrome,
+  // where dismissing the soft keyboard often does NOT fire the textarea's blur event.
+  const commitTextEdit = (raw?: string) => {
+    const id = editingNodeRef.current;
+    if (!id) return;
+    const text = raw ?? editTaRef.current?.value ?? '';
+    editingNodeRef.current = null; // guard re-entry before React re-renders
+    updateNodes((x) => (x.id === id ? ({ ...x, text } as CanvasNode) : x));
+    setTextMenu(null);
+    setEditingNode(null);
+  };
+
+  // Type/file/link node activation (double-tap / double-click target action).
+  const activateNode = (id: string) => {
+    const n = dataRef.current.nodes.find((x) => x.id === id);
+    if (!n) return;
+    if (n.type === 'text') setEditingNode(id);
+    else if (n.type === 'file') openFile((n as any).file);
+    else if (n.type === 'link') window.open((n as any).url, '_blank', 'noopener');
+  };
 
   const newId = () => {
     idSeed.current += 1;
@@ -233,6 +259,26 @@ export default function CanvasView() {
       vp.removeEventListener('pointercancel', up, { capture: true } as any);
     };
   }, []);
+
+  // Reliable "tap/click outside → save the editing card" for ALL platforms.
+  // Android Chrome frequently does NOT fire a textarea blur when the soft keyboard is
+  // dismissed, so editing was lost. A capture-phase document pointerdown commits the
+  // card whenever the press lands outside the textarea and its helper menus/pickers.
+  useEffect(() => {
+    if (!editingNode) return;
+    const onDocDown = (e: PointerEvent) => {
+      const ta = editTaRef.current;
+      const t = e.target as HTMLElement | null;
+      if (!ta || !t) return;
+      if (t === ta || ta.contains(t)) return; // inside the textarea — keep editing
+      // Helper UIs that legitimately steal focus while editing must not commit.
+      if (t.closest('.canvas-textmenu, .canvas-linkpicker, .canvas-notepicker')) return;
+      commitTextEdit();
+    };
+    document.addEventListener('pointerdown', onDocDown, true);
+    return () => document.removeEventListener('pointerdown', onDocDown, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingNode]);
 
   // Apply a canvas state to the store (marks dirty) WITHOUT touching history.
   const applyData = useCallback(
@@ -738,8 +784,7 @@ export default function CanvasView() {
     if (linkPicker) {
       // Dismiss the link dropdown → commit the card and finish editing.
       setLinkPicker(null);
-      const ta = editTaRef.current;
-      if (ta && editingNode) { const id = editingNode, val = ta.value; updateNodes((x) => (x.id === id ? { ...x, text: val } as CanvasNode : x)); setEditingNode(null); }
+      commitTextEdit();
     }
     try { vpRef.current?.setPointerCapture(e.pointerId); } catch { /* synthetic/inactive pointer */ }
     // Shift+drag on empty space = marquee select; plain drag = pan the viewport.
@@ -759,6 +804,17 @@ export default function CanvasView() {
     if ((e.target as HTMLElement).closest('[data-wikilink], a')) return;
     e.stopPropagation();
     if (e.button !== 0) return;
+    // Touch double-tap → activate (edit text / open file / open link). Android Chrome
+    // does not reliably synthesize dblclick from two taps, so detect it ourselves.
+    if (e.pointerType === 'touch') {
+      const last = lastTap.current;
+      if (last && last.id === id && e.timeStamp - last.t < 350) {
+        lastTap.current = null;
+        activateNode(id);
+        return;
+      }
+      lastTap.current = { id, t: e.timeStamp };
+    }
     // NOTE: do NOT setPointerCapture here — capturing on pointerdown retargets the
     // subsequent click/dblclick to the viewport, which would break double-click-to-edit.
     // We capture lazily on the first real move (see onViewportPointerMove 'move').
@@ -1283,9 +1339,7 @@ export default function CanvasView() {
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
-                if (n.type === 'text') setEditingNode(n.id);
-                else if (n.type === 'file') openFile((n as any).file);
-                else if (n.type === 'link') window.open((n as any).url, '_blank', 'noopener');
+                activateNode(n.id);
               }}
             >
               {n.type === 'text' && (
@@ -1301,9 +1355,9 @@ export default function CanvasView() {
                       // Keep editing while the link dropdown is open (it takes focus).
                       if (linkPicker) return;
                       // The format menu preventDefaults blur, so a real blur = done editing.
-                      setTextMenu(null);
-                      updateNodes((x) => (x.id === n.id ? { ...x, text: e.target.value } as CanvasNode : x));
-                      setEditingNode(null);
+                      // (On Android the doc-level pointerdown listener also commits — both
+                      // paths route through commitTextEdit, which is idempotent.)
+                      commitTextEdit(e.target.value);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Escape') (e.target as HTMLTextAreaElement).blur();
