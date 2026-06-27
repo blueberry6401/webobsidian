@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-06-27 (security fix — chặn leo thang quyền: token unlock của share không còn được chấp nhận như phiên owner)
+Cập nhật lần cuối: 2026-06-27 (security fix — chặn leo thang quyền token share; merge fix F-03 rate-limit, giữ `trust proxy` mặc định bật)
 
 ---
 
@@ -446,6 +446,19 @@ Cập nhật lần cuối: 2026-06-27 (security fix — chặn leo thang quyền
   string không rỗng và `path.resolve` về tuyệt đối, tránh persist phần tử rác làm crash `path.*`. **Hoãn (item 1):**
   default-password (`123456`) login qua API là thiết kế có chủ đích ("dùng được ngay", auth.ts §10-11) — không sửa
   lặng lẽ; nếu siết cần cập nhật PRD trước. Prod hiện đã đặt pass tùy chỉnh nên không bị phơi nhiễm.
+- 2026-06-24 (security fix F-03 — bypass rate-limit login qua `X-Forwarded-For`): trước đây
+  `app.set('trust proxy', 1)` luôn bật ⇒ `req.ip` lấy từ `X-Forwarded-For`; instance lộ trực tiếp
+  (bind `0.0.0.0`) cho phép attacker tự đặt XFF mỗi request → mỗi "IP" một bucket → vượt giới hạn
+  10 lần/15 phút (brute-force pass mặc định 6 ký tự). **Sửa 3 chỗ:** (1) `server/src/config.ts` —
+  thêm `trustProxy` parse từ env `TRUST_PROXY`, **mặc định `false`** (không tin XFF khi không có proxy);
+  nhận `true`/số hop/danh sách subnet. (2) `server/src/index.ts` — `app.set('trust proxy', config.trustProxy)`
+  thay cho giá trị cứng `1`. (3) `server/src/middleware/ratelimit.ts` — limiter khóa theo
+  `req.socket.remoteAddress` (địa chỉ TCP peer **không thể giả mạo**) thay cho `req.ip`, nên throttle
+  giữ vững bất kể cấu hình `trust proxy`. Cập nhật PRD (FR-9 env `TRUST_PROXY` + NFR bảo mật). Typecheck sạch.
+  **Điều chỉnh 2026-06-27 (khi merge PR #1):** vì phần fix rate-limit theo socket TCP ở trên đã tự vá F-03
+  bất kể `trust proxy`, nên **giữ mặc định `trust proxy` = bật (`true`)** thay vì đổi sang `false` — tránh
+  làm phiền số đông chạy sau reverse proxy (mất cờ `Secure` của cookie + cần cấu hình thêm). `TRUST_PROXY`
+  vẫn cấu hình được để hạ xuống `false`/số hop/subnet khi cần.
 - 2026-06-23 (fix — internal link tới file `.canvas`): click wikilink trỏ tới `Foo.canvas` bị điều hướng sang
   note markdown mới `Foo.canvas.md`. Nguyên nhân: link graph (`keyToPath`) chỉ index file markdown nên
   `/api/.../resolve` trả `null` cho target có đuôi `.canvas` → client rơi vào nhánh tạo note & nối thêm `.md`.

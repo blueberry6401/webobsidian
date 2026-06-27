@@ -31,7 +31,11 @@ safely. Key points:
 - Secrets (git token, API keys) live in `data/settings.json` on the server — mount `/data`
   as a private volume and keep it out of version control.
 - Run behind a TLS-terminating reverse proxy (set `HTTP_BIND=127.0.0.1`) for any
-  internet-facing deployment.
+  internet-facing deployment. `TRUST_PROXY` defaults to `true` so `X-Forwarded-Proto`
+  is honoured (Secure cookies work) behind that proxy; tighten it to a subnet list
+  if you want, or set `TRUST_PROXY=false` for an instance exposed directly to clients
+  with no proxy. Either way the login rate limit is keyed on the real TCP socket
+  address, so it cannot be bypassed by rotating `X-Forwarded-For`.
 
 ## Supported versions
 

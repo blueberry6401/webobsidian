@@ -50,7 +50,13 @@ async function main() {
   await ensureVault();
 
   const app = express();
-  app.set('trust proxy', 1);
+  // Honour X-Forwarded-* per the deployment's proxy topology (TRUST_PROXY).
+  // Default true (trust the immediate hop) so X-Forwarded-Proto-based `Secure`
+  // cookies work behind the recommended reverse-proxy setup without extra config.
+  // This is safe against F-03: the login rate limiter keys on the TCP socket
+  // address (see middleware/ratelimit.ts), not the spoofable X-Forwarded-For.
+  // Set TRUST_PROXY=false for a directly-exposed instance with no proxy.
+  app.set('trust proxy', config.trustProxy);
   app.use(express.json({ limit: '32mb' }));
   app.use(cookieParser());
 

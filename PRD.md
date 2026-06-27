@@ -268,7 +268,9 @@ webobsidian/
 - Healthcheck (`start_period` đủ dài cho index vault lớn lần đầu), restart policy.
 - **Self-deploy không sửa file tracked**: mọi tham số deploy đặt qua `.env` (git-ignored) —
   `VAULT_HOST_PATH` (host vault → `/vault`), `HTTP_BIND`/`HTTP_PORT` (publish), `WEBOBSIDIAN_PASSWORD`,
-  `WEBOBSIDIAN_WATCH`. `docker-compose.yml` chỉ tham chiếu `${VAR:-default}` nên `git pull`/redeploy
+  `WEBOBSIDIAN_WATCH`, `TRUST_PROXY` (mặc định `true` — tin hop kề để `X-Forwarded-Proto` hoạt động khi
+  đứng sau reverse proxy; đặt `false` khi phơi trực tiếp không proxy, hoặc danh sách subnet/số hop để siết).
+  `docker-compose.yml` chỉ tham chiếu `${VAR:-default}` nên `git pull`/redeploy
   không clobber cấu hình của người tự host. `cp .env.example .env && docker compose up -d --build`.
 - **File watcher chịu lỗi inotify**: VPS sạch thường có `fs.inotify.max_user_watches` thấp →
   native watch lỗi `ENOSPC/EMFILE`. Watcher tự degrade sang **polling** (`WEBOBSIDIAN_WATCH=auto`),
@@ -412,7 +414,9 @@ Express + SPA hiện có (không fork code, không đổi kiến trúc) — nên
 ## 4. Yêu cầu phi chức năng (NFR)
 - **Bảo mật**: password hash scrypt, JWT secret tự sinh, API key hash khi lưu, path traversal guard
   (chặn `..`, segment `.git`, symlink thoát vault), CORS hạn chế, rate limiting (cả `/auth/login`:
-  10 lần/15 phút/IP). Bắt buộc đổi mật khẩu mặc định (`123456`) ngay sau lần đăng nhập đầu
+  10 lần/15 phút — **khóa theo địa chỉ socket TCP thật, không theo `req.ip`/`X-Forwarded-For`** nên
+  không thể bypass bằng cách xoay vòng XFF, **bất kể cấu hình `trust proxy`**; vì vậy `trust proxy` để
+  mặc định bật (`true`, qua `TRUST_PROXY`) cho `X-Forwarded-Proto`/Secure-cookie hoạt động sau proxy). Bắt buộc đổi mật khẩu mặc định (`123456`) ngay sau lần đăng nhập đầu
   (`mustChangePassword`). Security headers qua `helmet` + CSP (script-src 'self'+nonce; không ép HTTPS
   để giữ self-host HTTP). Token git/PAT được redact khỏi mọi thông báo lỗi trả client + log. WebSocket
   `/ws` yêu cầu phiên đăng nhập hợp lệ. Plugin `id` được validate trước khi thành path segment; đổi

@@ -13,6 +13,11 @@ services:
       WEBOBSIDIAN_PASSWORD: ${WEBOBSIDIAN_PASSWORD:-}
       # File-watch mode: auto (native + polling fallback) | polling. See .env.example.
       WEBOBSIDIAN_WATCH: ${WEBOBSIDIAN_WATCH:-auto}
+      # Proxy trust. Default "true" (trust immediate hop) so X-Forwarded-Proto
+      # HTTPS cookie detection works behind a reverse proxy. Not a rate-limit risk
+      # (limiter keys on the TCP socket addr, not X-Forwarded-For). Set "false" only
+      # for a directly-exposed instance with no proxy. See .env.example.
+      TRUST_PROXY: ${TRUST_PROXY:-true}
       VAULT_PATH: /vault
       DATA_DIR: /data
       ALLOWED_ROOTS: /vault
