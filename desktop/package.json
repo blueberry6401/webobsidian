@@ -1,6 +1,6 @@
 {
   "name": "@webobsidian/desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "WebObsidian desktop app (Electron shell around the self-hosted server)",
   "author": "xnohat <xnohat@gmail.com>",
