@@ -2641,6 +2641,27 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
 export const editorClickFix = EditorView.domEventHandlers({
   mousedown(event, view) {
     if (event.button !== 0 || event.shiftKey || event.detail > 1) return false;
+    // Bare URLs (§Bare URLs above) only get a `cm-url` style mark, not a widget
+    // like [text](url)/wikilinks — so unlike those, a click here never opens
+    // anything without this explicit handler.
+    const urlEl = (event.target as HTMLElement | null)?.closest?.('.cm-url') as HTMLElement | null;
+    if (urlEl) {
+      // The `cm-url` mark is only ever applied to text matching urlRe (http(s)/ftp
+      // prefix), but re-check the scheme here rather than trust that invariant —
+      // window.open on an unvalidated string is an XSS vector if it ever drifts.
+      let parsed: URL | null = null;
+      try {
+        parsed = new URL((urlEl.textContent ?? '').trim());
+      } catch {
+        parsed = null;
+      }
+      if (parsed && (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'ftp:')) {
+        event.preventDefault();
+        window.open(parsed.toString(), '_blank', 'noopener,noreferrer');
+        return true;
+      }
+      return false;
+    }
     // `precise: false` returns the CLOSEST position and never null, so clicking
     // anywhere on a tall heading line-box (incl. its padding, where the default
     // posAtCoords returns null and CM leaves the caret put) still moves the caret

@@ -444,7 +444,7 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .cm-s-obsidian .cm-math { color: var(--text-muted); font-style: italic; }
 .cm-s-obsidian .cm-footref { color: var(--text-accent); font-size: var(--font-smallest); vertical-align: super; }
 .cm-s-obsidian .cm-blockid { color: var(--text-faint); font-size: var(--font-smaller); }
-.cm-s-obsidian .cm-url { color: var(--text-accent); text-decoration: underline; }
+.cm-s-obsidian .cm-url { color: var(--text-accent); text-decoration: underline; cursor: pointer; }
 /* Tag pill: bg accent@10%, radius 2em, padding 0.25em 0.65em (split begin/end halves) */
 .cm-s-obsidian .cm-hashtag { background: var(--tag-bg); color: var(--text-accent); font-size: var(--font-smaller); }
 .cm-s-obsidian .cm-hashtag-begin { border-radius: 2em 0 0 2em; padding: 0.25em 0 0.25em 0.65em; }
