@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-06-27 (security fix — chặn leo thang quyền token share; merge fix F-03 rate-limit, giữ `trust proxy` mặc định bật)
+Cập nhật lần cuối: 2026-07-06 (Phase 28 — đổi tên file từ tiêu đề trong Live Preview, verified qua Playwright E2E)
 
 ---
 
@@ -429,7 +429,35 @@ Cập nhật lần cuối: 2026-06-27 (security fix — chặn leo thang quyền
       bundle desktop. Root scripts `desktop`/`desktop:dist`/`desktop:publish`; `.gitignore` thêm `desktop/.gen`,
       `desktop/release`.
 
+## Phase 28 — Đổi tên file từ tiêu đề trong Live Preview — FR-2, PRD 1.6 (theo yêu cầu người dùng)
+- [x] M28.1 `livePreview.ts`: `TitleWidget` (chỉ nhánh không-readonly) chuyển thành một `<input type="text">`
+      thật thay vì `<div contenteditable>` — nested-contenteditable bên trong `.cm-content` bị CM giành lại
+      focus mỗi lần Mod-A (select all), `stopPropagation()` trên keydown không chặn được; `<input>` có model
+      focus/selection độc lập hoàn toàn với CM nên né được xung đột này. Đăng ký callback qua
+      `setLivePreviewRenameHandler` (cùng pattern `setLivePreviewMenuHandler`/`setLivePreviewLinkHandler` —
+      module không import thẳng store).
+- [x] M28.2 Store (`store.ts`): action `renameActiveNote(newTitle)` — sanitize (trim, bỏ `/`, giữ đuôi cũ,
+      no-op nếu rỗng/trùng tên), gọi `api.rename`, cập nhật `tabs`/`activePath` tại chỗ (không gọi
+      `openFile`, tránh refetch content), `loadTree()`, `notify()` khi lỗi.
+- [x] M28.3 `Editor.tsx`: wire `setLivePreviewRenameHandler` trong `useEffect` (cùng chỗ các setter khác),
+      gọi `useStore.getState().renameActiveNote`. Widget chỉ editable khi `!ro` (tức Live Preview — Source
+      không hiện tiêu đề như hiện tại; Reading đã readonly toàn pane nên render nhánh `<div>` tĩnh).
+- [x] M28.4 Kiểm thử tay **bằng Playwright thật** (không có browser tool trong harness nên tự viết script
+      chạy Chromium đã cache sẵn máy, KHÔNG thêm playwright vào deps của repo): đăng nhập, tạo note, đổi tên
+      qua tiêu đề bằng Enter → tab giữ nguyên (không đóng), URL đổi theo, đúng 1 tab; đổi tên bằng blur (click
+      ra ngoài) → commit; Esc → huỷ, tiêu đề hiện lại tên cũ, không gọi API; xoá trắng rồi blur → no-op, tên cũ
+      hiện lại; gõ `foo/bar` → server nhận `foo bar.md` (đã thay `/` bằng space, không tạo subfolder); Source
+      mode không có ô tiêu đề nào cả; Reading mode vẫn hiện tiêu đề nhưng không phải input/contenteditable.
+      7/7 kịch bản pass. `npm run typecheck` sạch cả 2 workspace.
+
 ### Nhật ký tiến độ
+- 2026-07-06 (Phase 28 xong, verified): thiết kế chốt qua brainstorm → PRD 1.6 + kế hoạch Phase 28 → cài đặt
+  (`livePreview.ts`/`store.ts`/`Editor.tsx`) → phát hiện & sửa 2 lớp bug khi kiểm thử thật bằng Playwright
+  (CodeMirror ép `contentEditable=false` lên node widget gốc trả về từ `toDOM()`, và nested-contenteditable
+  bên trong `.cm-content` mất focus vào tay CM mỗi lần Mod-A dù đã `stopPropagation()` — cả hai được giải
+  quyết bằng cách chuyển sang `<input>` thật) → 7/7 kịch bản E2E pass → typecheck sạch. Tranh thủ dịp này sửa
+  luôn memory sai: `_deployment` (số ít, local) không phải prod — prod thật là droplet DigitalOcean
+  (`obsidian.henry-group.uk`), xem `~/Documents/Projects/_deployments/webobsidian-web.md`.
 - 2026-06-27 (security fix — leo thang quyền qua token share): `verifyToken()` (server/src/services/auth.ts)
   chỉ kiểm tra chữ ký nên **mọi** token ký bằng `auth.jwtSecret` đều được chấp nhận như phiên owner. Endpoint
   public `POST /public/shares/:id/unlock` ký unlock-cookie bằng cùng secret → người được chia sẻ (có mật khẩu

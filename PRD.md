@@ -1,7 +1,14 @@
 # PRD — WebObsidian
 
 > Product Requirements Document
-> Phiên bản: 1.5 · Cập nhật: 2026-06-22 · Trạng thái: Draft
+> Phiên bản: 1.6 · Cập nhật: 2026-07-06 · Trạng thái: Draft
+> Changelog 1.6 (FR-2 — Đổi tên file trực tiếp từ tiêu đề trong Live Preview, theo yêu cầu người dùng):
+> dòng tiêu đề (tên file) hiển thị đầu note trong **Live Preview** giờ **bấm-để-sửa** được — gõ tên mới,
+> Enter/blur để đổi tên file thật trên đĩa, Esc để huỷ. Ghi chú vẫn giữ nguyên tab đang mở, chỉ chuyển
+> sang trỏ tới đường dẫn mới (URL cập nhật theo), không bị đóng như cách rename qua Files panel. Chỉ áp
+> dụng ở Live Preview — Source mode không có ô tiêu đề riêng, Reading mode chỉ-đọc nên không sửa được.
+> Đuôi file giữ nguyên tự động; ký tự `/` bị loại khỏi tên mới (ô này chỉ đổi tên, không di chuyển
+> thư mục). Dùng lại endpoint `PATCH /api/files/rename` sẵn có.
 > Changelog 1.5 (FR-13 — Desktop app Electron đa nền tảng, theo yêu cầu người dùng): bổ sung **FR-13** —
 > đóng gói WebObsidian thành **app cài đặt** macOS/Windows/Linux (arm64/x64/ia32). Workspace mới `desktop/`
 > là **Electron shell** spawn đúng server Express hiện có như tiến trình con (qua `ELECTRON_RUN_AS_NODE`,
@@ -196,6 +203,10 @@ webobsidian/
   oga/opus`. `![[clip.mp4|W]]` đặt chiều rộng video. Mở thẳng file media từ file tree → hiện player.
   Binary serve qua HTTP Range (206) để seek/Safari hoạt động; MIME + extension: `services/mime.ts` /
   `lib/media.ts`.
+- **Đổi tên file từ tiêu đề (inline title) — chỉ Live Preview**: dòng tiêu đề đầu note (tên file, không
+  gồm đuôi) bấm-để-sửa được; Enter hoặc blur → gọi `PATCH /api/files/rename`, tab hiện tại chuyển sang
+  trỏ đường dẫn mới (không đóng tab); Esc huỷ, trả lại tên cũ. Tên trống hoặc giữ nguyên → bỏ qua; ký tự
+  `/` bị loại khỏi tên mới (không dùng để move file).
 - Backlinks panel, outline, tag pane.
 - Right sidebar dạng **tab strip icon** (giống Obsidian): Backlinks · Outgoing links · Tags · Outline.
   - Backlinks: "Linked mentions" (đếm + danh sách) **và** "Unlinked mentions" (note nhắc tên note hiện tại
