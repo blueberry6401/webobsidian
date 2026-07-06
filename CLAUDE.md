@@ -40,4 +40,16 @@ docker compose up      # chạy full stack
 - `server/` — Express API (routes, services, middleware, plugins shim).
 - `web/` — React SPA (components, lib, styles).
 - `data/` — runtime config & index (gitignored).
-- `docs/` — tài liệu bổ sung.
+- `docs/` — tài liệu bổ sung. Xem `docs/RUNNING.md` để chạy dev/production từ đầu.
+
+## Remote git
+- `origin` = repo gốc upstream (`xnohat/webobsidian`) — chỉ đọc/tham khảo, không push trừ khi
+  người dùng yêu cầu rõ.
+- `fork` = repo riêng của người dùng (`blueberry6401/webobsidian`) — đích push mặc định cho các
+  fix/tính năng. `gh` đã auth sẵn trên máy này với tài khoản `blueberry6401`
+  (`gh auth setup-git` đã chạy để `git push` qua HTTPS dùng token của gh).
+- Dev thường làm trong git worktree tạm (`.claude/worktrees/<session>/`) — nhánh đó **bị xoá**
+  khi session đóng, nên fix phải được merge vào `main` ở checkout gốc (và push lên `fork`)
+  trước khi kết thúc phiên, không được để trôi nổi chỉ trong worktree.
+- Deployment lâu dài dự kiến đặt ở `../_deployment` (clone thường, không phải worktree), tách
+  biệt khỏi các worktree dev ngắn hạn — xem `docs/RUNNING.md`.
