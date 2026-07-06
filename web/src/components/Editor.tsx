@@ -35,6 +35,7 @@ import {
   setLivePreviewPropertyProvider,
   setLivePreviewPropertyTypes,
   setLivePreviewPropertyTypeSetter,
+  setLivePreviewRenameHandler,
   setLivePreviewTagProvider,
   setNoteTitle,
 } from '../lib/livePreview';
@@ -67,6 +68,12 @@ export default function Editor() {
   useEffect(() => {
     setLivePreviewLinkHandler(openWikilink);
   }, [openWikilink]);
+
+  useEffect(() => {
+    setLivePreviewRenameHandler((newTitle) => {
+      void useStore.getState().renameActiveNote(newTitle);
+    });
+  }, []);
 
   useEffect(() => {
     setLivePreviewMenuHandler(openContextMenu);

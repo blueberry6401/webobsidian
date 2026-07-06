@@ -27,6 +27,11 @@ export function setLivePreviewLinkHandler(fn: (target: string) => void) {
   openLink = fn;
 }
 
+let renameActiveTitle: (newTitle: string) => void = () => {};
+export function setLivePreviewRenameHandler(fn: (newTitle: string) => void) {
+  renameActiveTitle = fn;
+}
+
 export interface LpMenuItem {
   label: string;
   icon?: string;
@@ -2490,16 +2495,62 @@ export const livePreviewReadonly = StateField.define<boolean>({
 /* ---------------- inline title (note filename, Obsidian-style) ---------------- */
 
 class TitleWidget extends WidgetType {
-  constructor(readonly title: string) {
+  constructor(readonly title: string, readonly ro: boolean) {
     super();
   }
   eq(o: TitleWidget) {
-    return o.title === this.title;
+    return o.title === this.title && o.ro === this.ro;
+  }
+  ignoreEvent() {
+    // We own all interaction (contenteditable + commit); keep events from reaching CM.
+    return true;
   }
   toDOM() {
-    const d = document.createElement('div');
-    d.className = 'cm-inline-title';
-    d.textContent = this.title;
+    if (this.ro) {
+      const d = document.createElement('div');
+      d.className = 'cm-inline-title';
+      d.textContent = this.title;
+      return d;
+    }
+    // A real <input> instead of a contenteditable div: it has its own isolated
+    // focus/selection/keyboard model that the browser handles as a plain form
+    // control, independent of CM's document/selection machinery — a nested
+    // contenteditable island inside .cm-content fought CM for focus on Mod-a
+    // (select all) and lost every time, no matter what its own keydown handler did.
+    const d = document.createElement('input');
+    d.type = 'text';
+    d.className = 'cm-inline-title cm-inline-title-editable';
+    d.value = this.title;
+    d.autocomplete = 'off';
+    d.autocapitalize = 'off';
+    d.spellcheck = false;
+    const original = this.title;
+    let cancelled = false;
+    const commit = () => {
+      if (cancelled) {
+        cancelled = false;
+        return;
+      }
+      // `/` renames-in-place only, never moves the file.
+      const next = d.value.replace(/[/\\]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!next || next === original) {
+        d.value = original;
+        return;
+      }
+      renameActiveTitle(next);
+    };
+    d.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        d.blur();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelled = true;
+        d.value = original;
+        d.blur();
+      }
+    });
+    d.addEventListener('blur', commit);
     return d;
   }
 }
@@ -2525,13 +2576,17 @@ function buildInlineTitle(state: EditorState): DecorationSet {
   const firstLine = noFm.split(/\r?\n/).find((l) => l.trim() !== '');
   const h1 = firstLine?.match(/^#\s+(.+?)\s*$/);
   if (h1 && h1[1].trim().toLowerCase() === title.trim().toLowerCase()) return Decoration.none;
-  return Decoration.set([Decoration.widget({ widget: new TitleWidget(title), block: true, side: -1 }).range(0)]);
+  const ro = state.field(livePreviewReadonly, false) ?? false;
+  return Decoration.set([Decoration.widget({ widget: new TitleWidget(title, ro), block: true, side: -1 }).range(0)]);
 }
 
 export const inlineTitleField = StateField.define<DecorationSet>({
   create: (state) => buildInlineTitle(state),
   update(value, tr) {
-    if (tr.docChanged || tr.effects.some((e) => e.is(setNoteTitle) || e.is(setLivePreviewEnabled))) {
+    if (
+      tr.docChanged ||
+      tr.effects.some((e) => e.is(setNoteTitle) || e.is(setLivePreviewEnabled) || e.is(setLivePreviewReadonly))
+    ) {
       return buildInlineTitle(tr.state);
     }
     return value.map(tr.changes);
@@ -2688,6 +2743,23 @@ export const livePreviewTheme = EditorView.baseTheme({
     color: 'var(--text-normal)',
     margin: '0 0 0.5em',
     padding: '0',
+  },
+  '.cm-inline-title-editable': {
+    display: 'block',
+    width: '100%',
+    font: 'inherit',
+    letterSpacing: 'inherit',
+    color: 'inherit',
+    border: 'none',
+    background: 'transparent',
+    cursor: 'text',
+    outline: 'none',
+    borderRadius: '4px',
+  },
+  '.cm-inline-title-editable:hover': { background: 'var(--bg-modifier-hover)' },
+  '.cm-inline-title-editable:focus': {
+    background: 'var(--bg-primary)',
+    boxShadow: 'inset 0 0 0 1px var(--interactive-accent)',
   },
   '.cm-em': { fontStyle: 'italic' },
   '.cm-strike': { textDecoration: 'line-through' },

@@ -192,6 +192,12 @@ interface AppState {
   openFile: (path: string) => Promise<void>;
   openWikilink: (target: string) => Promise<void>;
   closeTab: (path: string) => void;
+  /**
+   * Rename the active note from its inline title: same folder, extension kept,
+   * `/` stripped from the new name. Unlike the Files-panel rename, this does NOT
+   * close the tab — the active tab and URL switch to the new path in place.
+   */
+  renameActiveNote: (newTitle: string) => Promise<void>;
   setContent: (c: string) => void;
   save: () => Promise<void>;
   createNote: (path: string, body?: string) => Promise<void>;
@@ -518,6 +524,30 @@ export const useStore = create<AppState>()(
           const activePath = wasActive ? (tabs.at(-1)?.path ?? null) : s.activePath;
           return { tabs, activePath, ...(wasActive ? { content: '', dirty: false } : {}) };
         }),
+
+      renameActiveNote: async (newTitle) => {
+        const { activePath } = get();
+        if (!activePath) return;
+        const slash = activePath.lastIndexOf('/');
+        const dir = slash < 0 ? '' : activePath.slice(0, slash);
+        const ext = activePath.match(/\.(md|markdown)$/i)?.[0] ?? '.md';
+        const clean = newTitle.replace(/\//g, '').trim();
+        if (!clean) return;
+        const name = `${clean}${ext}`;
+        const to = dir ? `${dir}/${name}` : name;
+        if (to === activePath) return;
+        try {
+          await api.rename(activePath, to);
+        } catch (e: any) {
+          get().notify(e?.message ?? 'Rename failed');
+          return;
+        }
+        set((s) => ({
+          tabs: s.tabs.map((t) => (t.path === activePath ? { path: to, title: name } : t)),
+          activePath: to,
+        }));
+        await get().loadTree();
+      },
 
       setContent: (c) => set({ content: c, dirty: true }),
 
