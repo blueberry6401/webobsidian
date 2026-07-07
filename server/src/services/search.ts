@@ -80,6 +80,11 @@ class QmdEngine {
   // Per-note frontmatter key→type, for the vault-wide property suggestions list.
   private propMeta = new Map<string, Record<string, string>>();
   private ready = false;
+  private persistTimer: NodeJS.Timeout | null = null;
+  // Coalesce bursts of incremental upsert/remove (e.g. ~900ms autosave ticks, or a
+  // chokidar event storm from `git pull` touching many files) into one disk write
+  // instead of one per note — full build() still persists immediately.
+  private static PERSIST_DEBOUNCE_MS = 3000;
 
   constructor() {
     this.mini = this.newIndex();
@@ -152,7 +157,9 @@ class QmdEngine {
       else this.mini.add(doc);
     } catch {
       this.remove(rel);
+      return;
     }
+    this.schedulePersist();
   }
 
   remove(rel: string): void {
@@ -160,6 +167,24 @@ class QmdEngine {
     this.snippets.delete(rel);
     this.tagSet.delete(rel);
     this.propMeta.delete(rel);
+    this.schedulePersist();
+  }
+
+  private schedulePersist(): void {
+    if (this.persistTimer) return;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      void this.persist();
+    }, QmdEngine.PERSIST_DEBOUNCE_MS);
+  }
+
+  /** Write any pending debounced index change immediately (e.g. before process exit). */
+  async flush(): Promise<void> {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    await this.persist();
   }
 
   async rename(from: string, to: string): Promise<void> {

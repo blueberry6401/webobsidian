@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-06 (Phase 28 — đổi tên file từ tiêu đề trong Live Preview, verified qua Playwright E2E)
+Cập nhật lần cuối: 2026-07-07 (fix search index không persist sau restart — mọi note thêm/sửa/xoá kể từ lần build đầy đủ gần nhất từng biến mất khỏi search sau restart/redeploy)
 
 ---
 
@@ -1294,3 +1294,26 @@ Cập nhật lần cuối: 2026-07-06 (Phase 28 — đổi tên file từ tiêu 
   icon globe màu accent cạnh tên. Icon `globe` thêm vào bộ Lucide. Verify headless Chrome qua CDP
   (MCP bị phiên khác giữ): badge hiện đúng note share + màu accent, menu có "Share…", dialog mở đủ
   controls (URL đúng token, toggle on, Set password…, Delete). Typecheck + build sạch.
+- 2026-07-07 (Fix search index không persist sau restart trên prod): người dùng báo search trên
+  droplet không tìm thấy note có thật (kể cả khớp tiêu đề chính xác), dù `GET /notes` đọc đúng nội
+  dung — bằng chứng mạnh: `_OLD/...` (di chuyển gần đây) vẫn bị search trả về ở đường dẫn **cũ**,
+  đúng khớp snapshot vault lúc build cuối 2026-06-28. Root cause (khác với fix 2026-06-11 ở trên —
+  lần đó là persist rỗng, lần này là **không persist**): `QmdEngine.upsert()`/`remove()`
+  (`server/src/services/search.ts`) chỉ cập nhật MiniSearch trong RAM, không bao giờ ghi
+  `data/qmd-index.json` — chỉ `build()` (full rebuild, dùng cho `/reindex` hoặc lúc boot khi
+  `restore()` thất bại) mới `persist()`. Mọi đường cập nhật tăng dần (agent API, UI file routes,
+  chokidar watcher theo dõi `git pull`/sửa ngoài) đều đi qua `upsert`/`remove`, nên **mọi thay đổi
+  vault từ sau lần build đầy đủ gần nhất bị mất khi container restart** (`restart: unless-stopped`
+  + redeploy `docker compose up -d --build`), dù note vẫn còn nguyên trên đĩa. Xác nhận trực tiếp
+  trên droplet trước khi sửa: `qmd-index.json` mtime = 28/06 06:30 trong khi hàng chục file `.md`
+  trong vault có mtime mới hơn nhiều (kể cả `_OLD/*`); `settings.json` cùng thư mục có mtime hôm
+  nay — chứng minh cơ chế ghi đĩa của `search-index` (khác `settings`) thực sự đứng yên từ 28/06.
+  Sửa: `upsert()`/`remove()` giờ gọi `schedulePersist()` — debounce 3s để gộp nhiều thay đổi liên
+  tiếp (autosave editor ~900ms, hoặc bão sự kiện chokidar khi `git pull`) thành 1 lần ghi đĩa thay vì
+  ghi mỗi lần; thêm `QmdEngine.flush()` + handler `SIGTERM`/`SIGINT` trong `index.ts` để ép ghi ngay
+  khi Docker dừng container (redeploy/restart), không đợi hết debounce. Verify: dựng server thật với
+  vault tạm, thêm note qua API, `kill -TERM` ngay lập tức (mô phỏng restart giữa chừng), khởi động
+  lại → search thấy note mới. Đối chứng: lùi code về bản cũ (`git stash`), lặp lại y hệt kịch bản →
+  search trả `hits: []` (tái hiện đúng bug), xác nhận fix giải quyết đúng root cause chứ không phải
+  trùng hợp. Typecheck 2 workspace sạch. Việc deploy fix này lên droplet prod (`159.65.128.188`) chờ
+  người dùng xác nhận trước khi restart service đang chạy vault thật.
