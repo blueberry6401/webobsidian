@@ -44,6 +44,17 @@ process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason);
 });
 
+// Docker sends SIGTERM on `down`/restart/redeploy. Flush the debounced search-index
+// write (see QmdEngine.schedulePersist) so edits made just before a restart aren't
+// silently dropped when the index is restored from disk on the next boot.
+async function shutdown(signal: string) {
+  console.log(`[shutdown] ${signal} received, flushing search index...`);
+  await qmd.flush().catch((err) => console.error('[shutdown] flush failed:', err));
+  process.exit(0);
+}
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
+
 async function main() {
   await loadSettings();
   await setPasswordIfInitial();
