@@ -78,8 +78,13 @@ export default function HtmlPreviewView({ previewId }: { previewId: string }) {
         </button>
       </div>
       <div className="html-preview-frame-wrap">
-        {preview.status === 'done' && html ? (
-          <iframe className="html-preview-frame" sandbox="allow-scripts" srcDoc={html} title={preview.name} />
+        {preview.status === 'done' ? (
+          <iframe
+            className="html-preview-frame"
+            sandbox="allow-scripts"
+            src={api.htmlPreviewRawUrl(previewId)}
+            title={preview.name}
+          />
         ) : (
           <div className="markdown-preview">
             <div className="preview-inner">

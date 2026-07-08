@@ -95,6 +95,35 @@ htmlPreviewRouter.get(
   }),
 );
 
+// Serve the generated HTML as its own document (not JSON) so the viewer <iframe> can
+// use `src=` instead of `srcDoc=`. This matters because a `srcDoc` iframe inherits the
+// embedding page's CSP (script-src 'self'+nonce), which silently blocks the inline
+// <script>/onclick the LLM writes — the accordion-style previews looked broken with no
+// console error the user could see. A real navigation gets its own response headers, so
+// we override CSP to allow inline script/style for just this document. It's still
+// isolated from the app's session/cookies by the iframe's sandbox="allow-scripts"
+// (no allow-same-origin).
+htmlPreviewRouter.get(
+  '/:id/raw',
+  asyncHandler(async (req, res) => {
+    const record = await getPreview(req.params.id);
+    if (!record || record.status !== 'done') {
+      res.status(404).send('Not found');
+      return;
+    }
+    const html = await getPreviewHtml(record.id);
+    if (!html) {
+      res.status(404).send('Not found');
+      return;
+    }
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src 'none'; frame-ancestors 'self'",
+    );
+    res.type('html').send(html);
+  }),
+);
+
 htmlPreviewRouter.post(
   '/:id/regenerate',
   asyncHandler(async (req, res) => {
