@@ -3,7 +3,7 @@ import { useStore } from '../lib/store';
 import { api } from '../lib/api';
 import Icon from './Icon';
 
-type Section = 'vault' | 'git' | 'api' | 'sharing' | 'plugins' | 'appearance' | 'account' | 'about';
+type Section = 'vault' | 'git' | 'api' | 'sharing' | 'ai' | 'plugins' | 'appearance' | 'account' | 'about';
 
 export default function Settings() {
   const open = useStore((s) => s.settingsOpen);
@@ -22,7 +22,7 @@ export default function Settings() {
       <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
         <div className="settings-layout">
           <div className="settings-nav">
-            {(['vault', 'git', 'api', 'sharing', 'plugins', 'appearance', 'account', 'about'] as Section[]).map((s) => (
+            {(['vault', 'git', 'api', 'sharing', 'ai', 'plugins', 'appearance', 'account', 'about'] as Section[]).map((s) => (
               <button key={s} className={section === s ? 'active' : ''} onClick={() => setSection(s)}>
                 {labels[s]}
               </button>
@@ -33,6 +33,7 @@ export default function Settings() {
             {settings && section === 'git' && <GitSettings s={settings} reload={() => api.getSettings().then(setSettings)} />}
             {section === 'api' && <ApiKeys />}
             {section === 'sharing' && <Shares />}
+            {settings && section === 'ai' && <AiSettings s={settings} reload={() => api.getSettings().then(setSettings)} />}
             {section === 'plugins' && <Plugins />}
             {settings && section === 'appearance' && <Appearance s={settings} />}
             {section === 'account' && <AccountSettings s={settings} reload={() => api.getSettings().then(setSettings)} />}
@@ -49,6 +50,7 @@ const labels: Record<Section, string> = {
   git: 'GitHub Sync',
   api: 'API Keys',
   sharing: 'Sharing',
+  ai: 'AI',
   plugins: 'Community Plugins',
   appearance: 'Appearance',
   account: 'Account',
@@ -344,6 +346,112 @@ function Shares() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function AiSettings({ s, reload }: { s: any; reload: () => void }) {
+  const [llm, setLlm] = useState({ ...s.llm });
+  const set = (k: string, v: any) => setLlm((p: any) => ({ ...p, [k]: v }));
+  const save = async () => {
+    // Only patch the non-template fields — templates are saved separately below
+    // (via saveTemplates), so this must NOT resend a stale `llm.templates` snapshot.
+    await api.putSettings({
+      llm: { provider: llm.provider, anthropicApiKey: llm.anthropicApiKey, openaiApiKey: llm.openaiApiKey, openaiModel: llm.openaiModel },
+    });
+    await reload();
+  };
+
+  const [templates, setTemplates] = useState<any[]>(s.llm.templates ?? []);
+  const [newName, setNewName] = useState('');
+  const [newPrompt, setNewPrompt] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const saveTemplates = async (next: any[]) => {
+    setTemplates(next);
+    await api.putSettings({ llm: { templates: next } });
+    await reload();
+  };
+  const addTemplate = async () => {
+    if (!newName.trim() || !newPrompt.trim()) return;
+    const id = Math.random().toString(36).slice(2, 10);
+    await saveTemplates([...templates, { id, name: newName.trim(), prompt: newPrompt.trim() }]);
+    setNewName('');
+    setNewPrompt('');
+  };
+  const updateTemplate = async (id: string, patch: any) => {
+    await saveTemplates(templates.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  };
+  const removeTemplate = async (id: string) => {
+    if (!confirm('Xoá template này?')) return;
+    await saveTemplates(templates.filter((t) => t.id !== id));
+  };
+
+  return (
+    <div>
+      <h2>AI — HTML Preview</h2>
+      <p style={{ color: 'var(--text-muted)' }}>
+        Cấu hình LLM dùng để sinh bản HTML preview cho note (menu ⋯ → "HTML Preview…").
+      </p>
+      <Row name="Provider">
+        <select className="text-input" value={llm.provider} onChange={(e) => set('provider', e.target.value)}>
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="openai">OpenAI</option>
+        </select>
+      </Row>
+      <Row name="Anthropic API key" desc="Luôn dùng model Claude Sonnet mới nhất, không cần chọn tên model">
+        <input className="text-input" type="password" style={{ width: 320 }} value={llm.anthropicApiKey} onChange={(e) => set('anthropicApiKey', e.target.value)} />
+      </Row>
+      <Row name="OpenAI API key">
+        <input className="text-input" type="password" style={{ width: 320 }} value={llm.openaiApiKey} onChange={(e) => set('openaiApiKey', e.target.value)} />
+      </Row>
+      <Row name="OpenAI model" desc="Tên model OpenAI dùng khi provider = OpenAI">
+        <input className="text-input" style={{ width: 200 }} value={llm.openaiModel} onChange={(e) => set('openaiModel', e.target.value)} />
+      </Row>
+      <button className="btn" onClick={save}>Save</button>
+
+      <h3 style={{ marginTop: 24 }}>Templates</h3>
+      {templates.length === 0 && <div style={{ color: 'var(--text-faint)' }}>Chưa có template nào.</div>}
+      {templates.map((t) => (
+        <div className="setting-row" key={t.id}>
+          <div className="info" style={{ minWidth: 0 }}>
+            {editingId === t.id ? (
+              <>
+                <input
+                  className="text-input"
+                  style={{ width: '100%', marginBottom: 4 }}
+                  value={t.name}
+                  onChange={(e) => setTemplates((p) => p.map((x) => (x.id === t.id ? { ...x, name: e.target.value } : x)))}
+                />
+                <textarea
+                  className="text-input"
+                  style={{ width: '100%', height: 70, boxSizing: 'border-box' }}
+                  value={t.prompt}
+                  onChange={(e) => setTemplates((p) => p.map((x) => (x.id === t.id ? { ...x, prompt: e.target.value } : x)))}
+                />
+              </>
+            ) : (
+              <>
+                <div className="name">{t.name}</div>
+                <div className="desc" style={{ whiteSpace: 'pre-wrap' }}>{t.prompt}</div>
+              </>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+            {editingId === t.id ? (
+              <button className="btn" onClick={() => { updateTemplate(t.id, { name: t.name, prompt: t.prompt }); setEditingId(null); }}>Save</button>
+            ) : (
+              <button className="btn secondary" onClick={() => setEditingId(t.id)}><Icon name="pencil" size={14} /></button>
+            )}
+            <button className="btn danger" onClick={() => removeTemplate(t.id)}><Icon name="trash" size={14} /></button>
+          </div>
+        </div>
+      ))}
+      <div style={{ marginTop: 10 }}>
+        <input className="text-input" style={{ width: '100%', marginBottom: 6 }} placeholder="Tên template mới" value={newName} onChange={(e) => setNewName(e.target.value)} />
+        <textarea className="text-input" style={{ width: '100%', height: 70, boxSizing: 'border-box', marginBottom: 6 }} placeholder="Nội dung prompt…" value={newPrompt} onChange={(e) => setNewPrompt(e.target.value)} />
+        <button className="btn" onClick={addTemplate}>+ Thêm template</button>
+      </div>
     </div>
   );
 }
