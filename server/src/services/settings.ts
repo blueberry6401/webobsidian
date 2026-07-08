@@ -16,6 +16,12 @@ const ApiKeySchema = z.object({
   lastUsed: z.string().nullable().default(null),
 });
 
+const HtmlTemplateSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  prompt: z.string(),
+});
+
 const SettingsSchema = z.object({
   version: z.number().default(1),
   auth: z
@@ -67,6 +73,15 @@ const SettingsSchema = z.object({
       rateLimitPerMin: z.number().default(120),
     })
     .default({}),
+  llm: z
+    .object({
+      provider: z.enum(['anthropic', 'openai']).default('anthropic'),
+      anthropicApiKey: z.string().default(''),
+      openaiApiKey: z.string().default(''),
+      openaiModel: z.string().default('gpt-4o'),
+      templates: z.array(HtmlTemplateSchema).default([]),
+    })
+    .default({}),
   ui: z
     .object({
       theme: z.enum(['obsidian-dark', 'obsidian-light']).default('obsidian-light'),
@@ -83,6 +98,7 @@ const SettingsSchema = z.object({
 
 export type Settings = z.infer<typeof SettingsSchema>;
 export type ApiKeyRecord = z.infer<typeof ApiKeySchema>;
+export type HtmlTemplate = z.infer<typeof HtmlTemplateSchema>;
 
 /** ---- Store --------------------------------------------------------------- */
 
@@ -204,6 +220,11 @@ export function redactSettings(s: Settings) {
         createdAt: k.createdAt,
         lastUsed: k.lastUsed,
       })),
+    },
+    llm: {
+      ...s.llm,
+      anthropicApiKey: s.llm.anthropicApiKey ? '••••••••' : '',
+      openaiApiKey: s.llm.openaiApiKey ? '••••••••' : '',
     },
   };
 }

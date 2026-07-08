@@ -26,6 +26,8 @@ import { agentRouter } from './routes/agent.js';
 import { uiStateRouter } from './routes/uistate.js';
 import { sharesRouter, publicSharesRouter } from './routes/shares.js';
 import { sharePageRouter } from './routes/sharepage.js';
+import { htmlPreviewRouter } from './routes/htmlpreview.js';
+import { sweepInterruptedOnBoot } from './services/htmlpreview.js';
 import { initSearch, qmd } from './services/search.js';
 import { buildLinkGraph, updateLinkGraphForFile } from './services/links.js';
 import { buildFileIndex, indexFile, unindexFile } from './services/fileindex.js';
@@ -59,6 +61,7 @@ async function main() {
   await loadSettings();
   await setPasswordIfInitial();
   await ensureVault();
+  await sweepInterruptedOnBoot();
 
   const app = express();
   // Honour X-Forwarded-* per the deployment's proxy topology (TRUST_PROXY).
@@ -127,6 +130,7 @@ async function main() {
   app.use('/api/shares', sharesRouter); // manage public share links (auth)
   app.use('/public/shares', publicSharesRouter); // shared-note content (NO auth)
   app.use('/share', sharePageRouter); // SSR public share page (NO auth, SEO/OG meta)
+  app.use('/api/html-preview', htmlPreviewRouter); // LLM-generated HTML previews (auth)
   app.use('/api', searchRouter); // /api/search, /api/tags, /api/backlinks, /api/graph...
 
   // Static SPA (built into server/public)
@@ -228,7 +232,7 @@ function startWatcher(root: string, usePolling: boolean) {
     // Ignore VCS/dep/trash dirs AND `.obsidian` — the desktop Obsidian app
     // rewrites its workspace/state files constantly, which otherwise floods the
     // server with events (→ broadcasts → full tree refetches) and pins the CPU.
-    ignored: (p) => /(^|[/\\])(\.git|\.obsidian|node_modules|\.trash)([/\\]|$)/.test(p),
+    ignored: (p) => /(^|[/\\])(\.git|\.obsidian|node_modules|\.trash|\.html-preview)([/\\]|$)/.test(p),
     ignoreInitial: true,
     persistent: true,
     usePolling,
