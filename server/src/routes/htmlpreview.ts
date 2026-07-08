@@ -100,12 +100,28 @@ htmlPreviewRouter.get(
 // embedding page's CSP (script-src 'self'+nonce), which silently blocks the inline
 // <script>/onclick the LLM writes — the accordion-style previews looked broken with no
 // console error the user could see. A real navigation gets its own response headers, so
-// we override CSP to allow inline script/style for just this document. It's still
-// isolated from the app's session/cookies by the iframe's sandbox="allow-scripts"
-// (no allow-same-origin).
+// we override CSP to allow inline script/style for just this document.
+//
+// SECURITY: this document is served on the app's own origin (required so the LLM's
+// inline script can execute at all). The <iframe sandbox="allow-scripts"> (no
+// allow-same-origin) isolates it from the app's session when loaded THAT way — but
+// sandbox is an iframe-only attribute. If this URL were ever opened as a top-level
+// navigation instead (copied out of the iframe, middle-clicked, etc.), the LLM-generated
+// script would run with the logged-in user's full same-origin session — cookies are
+// httpOnly so JS can't read them directly, but the browser still attaches them to any
+// same-origin fetch(), so a malicious/compromised preview could read or overwrite the
+// whole vault via /api/*. Reject anything that isn't a same-origin iframe embed using
+// the Fetch Metadata headers modern browsers attach to every request; browsers old
+// enough to omit these headers don't send them, so the check only applies when present.
 htmlPreviewRouter.get(
   '/:id/raw',
   asyncHandler(async (req, res) => {
+    const fetchDest = req.get('Sec-Fetch-Dest');
+    const fetchSite = req.get('Sec-Fetch-Site');
+    if ((fetchDest && fetchDest !== 'iframe') || (fetchSite && fetchSite !== 'same-origin')) {
+      res.status(403).send('This document can only be opened inside WebObsidian.');
+      return;
+    }
     const record = await getPreview(req.params.id);
     if (!record || record.status !== 'done') {
       res.status(404).send('Not found');
