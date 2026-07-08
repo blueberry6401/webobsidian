@@ -15,6 +15,12 @@ const TREE_SORTS: TreeSort[] = ['name-asc', 'name-desc', 'mtime-desc', 'mtime-as
 /** Sentinel tab path for the Graph view (it lives in a tab, like Obsidian). */
 export const GRAPH_PATH = 'graph://view';
 
+/** Sentinel tab path scheme for an HTML Preview tab (same pattern as GRAPH_PATH). */
+export const HTML_PREVIEW_PREFIX = 'htmlpreview://';
+export const isHtmlPreviewPath = (path: string): boolean => path.startsWith(HTML_PREVIEW_PREFIX);
+export const htmlPreviewTabPath = (id: string): string => `${HTML_PREVIEW_PREFIX}${id}`;
+export const htmlPreviewIdFromPath = (path: string): string => path.slice(HTML_PREVIEW_PREFIX.length);
+
 export interface Tab {
   path: string;
   title: string;
@@ -179,6 +185,11 @@ interface AppState {
   /** Note path whose Share dialog is open (null = closed). */
   shareDialogPath: string | null;
   setShareDialog: (path: string | null) => void;
+  /** Note path whose HTML Preview dialog is open (null = closed). */
+  htmlPreviewDialogPath: string | null;
+  setHtmlPreviewDialog: (path: string | null) => void;
+  /** Open (or focus) an HTML preview's tab, given its id + display title. */
+  openHtmlPreview: (id: string, title: string) => Promise<void>;
   /** Note path whose Version history modal is open (null = closed). */
   versionHistoryPath: string | null;
   setVersionHistory: (path: string | null) => void;
@@ -445,6 +456,19 @@ export const useStore = create<AppState>()(
       },
       shareDialogPath: null,
       setShareDialog: (path) => set({ shareDialogPath: path }),
+      htmlPreviewDialogPath: null,
+      setHtmlPreviewDialog: (path) => set({ htmlPreviewDialogPath: path }),
+      openHtmlPreview: async (id, title) => {
+        if (get().dirty) await get().save();
+        const path = htmlPreviewTabPath(id);
+        set((s) => ({
+          tabs: s.tabs.some((t) => t.path === path) ? s.tabs : [...s.tabs, { path, title }],
+          activePath: path,
+          content: '',
+          dirty: false,
+          ...pushHistory(s, path),
+        }));
+      },
       versionHistoryPath: null,
       setVersionHistory: (path) => set({ versionHistoryPath: path }),
       revealInTree: (path) => {
@@ -478,6 +502,11 @@ export const useStore = create<AppState>()(
 
       openFile: async (path) => {
         if (path === GRAPH_PATH) return get().openGraph();
+        if (isHtmlPreviewPath(path)) {
+          if (get().dirty) await get().save();
+          set((s) => ({ activePath: path, content: '', dirty: false, ...pushHistory(s, path) }));
+          return;
+        }
         if (get().dirty) await get().save();
         // A folder path (e.g. deep-link /note/<folder>) opens a folder content
         // view — never read it as a note nor pollute Recent with it.
