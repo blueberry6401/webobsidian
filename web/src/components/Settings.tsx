@@ -351,15 +351,25 @@ function Shares() {
 }
 
 function AiSettings({ s, reload }: { s: any; reload: () => void }) {
+  const notify = useStore((st) => st.notify);
   const [llm, setLlm] = useState({ ...s.llm });
+  const [saving, setSaving] = useState(false);
   const set = (k: string, v: any) => setLlm((p: any) => ({ ...p, [k]: v }));
   const save = async () => {
-    // Only patch the non-template fields — templates are saved separately below
-    // (via saveTemplates), so this must NOT resend a stale `llm.templates` snapshot.
-    await api.putSettings({
-      llm: { provider: llm.provider, anthropicApiKey: llm.anthropicApiKey, openaiApiKey: llm.openaiApiKey, openaiModel: llm.openaiModel },
-    });
-    await reload();
+    setSaving(true);
+    try {
+      // Only patch the non-template fields — templates are saved separately below
+      // (via saveTemplates), so this must NOT resend a stale `llm.templates` snapshot.
+      await api.putSettings({
+        llm: { provider: llm.provider, anthropicApiKey: llm.anthropicApiKey, openaiApiKey: llm.openaiApiKey, openaiModel: llm.openaiModel },
+      });
+      await reload();
+      notify('Đã lưu cấu hình AI ✓');
+    } catch (e: any) {
+      notify(`Lưu thất bại: ${e.message ?? 'lỗi không rõ'}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const [templates, setTemplates] = useState<any[]>(s.llm.templates ?? []);
@@ -369,8 +379,12 @@ function AiSettings({ s, reload }: { s: any; reload: () => void }) {
 
   const saveTemplates = async (next: any[]) => {
     setTemplates(next);
-    await api.putSettings({ llm: { templates: next } });
-    await reload();
+    try {
+      await api.putSettings({ llm: { templates: next } });
+      await reload();
+    } catch (e: any) {
+      notify(`Lưu template thất bại: ${e.message ?? 'lỗi không rõ'}`);
+    }
   };
   const addTemplate = async () => {
     if (!newName.trim() || !newPrompt.trim()) return;
@@ -408,7 +422,7 @@ function AiSettings({ s, reload }: { s: any; reload: () => void }) {
       <Row name="OpenAI model" desc="Tên model OpenAI dùng khi provider = OpenAI">
         <input className="text-input" style={{ width: 200 }} value={llm.openaiModel} onChange={(e) => set('openaiModel', e.target.value)} />
       </Row>
-      <button className="btn" onClick={save}>Save</button>
+      <button className="btn" onClick={save} disabled={saving}>{saving ? 'Đang lưu…' : 'Save'}</button>
 
       <h3 style={{ marginTop: 24 }}>Templates</h3>
       {templates.length === 0 && <div style={{ color: 'var(--text-faint)' }}>Chưa có template nào.</div>}
