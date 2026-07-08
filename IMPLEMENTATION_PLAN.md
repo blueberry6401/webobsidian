@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-06-27 (security fix — chặn leo thang quyền token share; merge fix F-03 rate-limit, giữ `trust proxy` mặc định bật)
+Cập nhật lần cuối: 2026-07-08 (FR-14 — HTML Preview LLM-generated per-note)
 
 ---
 
@@ -429,7 +429,37 @@ Cập nhật lần cuối: 2026-06-27 (security fix — chặn leo thang quyền
       bundle desktop. Root scripts `desktop`/`desktop:dist`/`desktop:publish`; `.gitignore` thêm `desktop/.gen`,
       `desktop/release`.
 
+## Phase 28 — HTML Preview (LLM-generated, per-note) — FR-14 (theo yêu cầu người dùng)
+- [x] M28.1 Settings `llm` group (provider/API keys masked/openaiModel/templates CRUD) — schema +
+      redaction + `PUT /api/settings` (`server/src/services/settings.ts`, `server/src/routes/settings.ts`)
+- [x] M28.2 `llmclient.ts`: provider-agnostic `generateHtml()` (Anthropic Claude Sonnet alias / OpenAI,
+      configurable model), strips markdown code fences from the LLM response
+- [x] M28.3 `.html-preview/` vault-hidden storage (`htmlpreview.ts` service): index.json + per-preview
+      `.html` files, background generation (fire-and-forget), sweep-interrupted-on-boot, out-of-sync
+      via sha256 content hash
+- [x] M28.4 Routes `/api/html-preview` (list/create/get/regenerate/rename/delete); mounted + watcher
+      ignore + boot sweep wired into `server/src/index.ts`
+- [x] M28.5 Frontend: sentinel tab path `htmlpreview://<id>` (store.ts, same pattern as `graph://view`),
+      `HtmlPreviewDialog` (list/create/rename/delete per note), `HtmlPreviewView` tab (status badge +
+      polling + sandboxed iframe), wired into Workspace ⋯ menu + tab bar + pane dispatch
+- [x] M28.6 Settings → AI section: provider/API keys/model + template prompt CRUD
+- [x] M28.7 End-to-end verify với API key thật (Anthropic + OpenAI): tạo preview, reload giữa lúc
+      đang generate vẫn khôi phục đúng trạng thái, out-of-sync badge, tạo lại, nhiều preview/note,
+      rename/delete, thiếu key báo lỗi rõ, `.html-preview/` không lộ ra file tree/search/watcher
+
 ### Nhật ký tiến độ
+- 2026-07-08: Phase 28 (PRD 1.6, FR-14) — HTML Preview LLM-generated per-note. Note `.md` có thể có
+  nhiều bản HTML preview (Anthropic/OpenAI, template prompt tái sử dụng), gắn với note gốc + báo
+  out-of-sync qua sha256 hash, xử lý nền + polling (reload giữa lúc generate vẫn khôi phục đúng
+  trạng thái nhờ trạng thái ghi đĩa trước khi gọi LLM; server restart giữa chừng → job dở dang tự
+  thành error thay vì treo). Lưu trong `.html-preview/` ẩn trong vault (cùng quy ước `.trash`, không
+  cần sửa gì ở tree/search/link-index — chỉ thêm 1 entry vào regex ignore của watcher). Xem trong
+  tab riêng (`htmlpreview://<id>`, cùng pattern `graph://view`), `<iframe sandbox="allow-scripts">`
+  cách ly session app khỏi HTML do LLM sinh. Settings → AI: provider/API key (che sau khi lưu)/model
+  OpenAI/CRUD template. Verify: dùng API key thật (cả Anthropic lẫn OpenAI) qua iOS Simulator Safari
+  thật — tạo preview, reload đúng lúc đang generate vẫn khôi phục trạng thái + hoàn tất sau đó, badge
+  out-of-sync/regenerate, 2 preview độc lập trên cùng note, save-as-template, rename, delete (confirm
+  dialog), thiếu key báo lỗi rõ, `.html-preview/` không lộ ra file tree. Typecheck + build sạch.
 - 2026-06-27 (security fix — leo thang quyền qua token share): `verifyToken()` (server/src/services/auth.ts)
   chỉ kiểm tra chữ ký nên **mọi** token ký bằng `auth.jwtSecret` đều được chấp nhận như phiên owner. Endpoint
   public `POST /public/shares/:id/unlock` ký unlock-cookie bằng cùng secret → người được chia sẻ (có mật khẩu

@@ -1,7 +1,13 @@
 # PRD — WebObsidian
 
 > Product Requirements Document
-> Phiên bản: 1.5 · Cập nhật: 2026-06-22 · Trạng thái: Draft
+> Phiên bản: 1.6 · Cập nhật: 2026-07-08 · Trạng thái: Draft
+> Changelog 1.6 (FR-14 — HTML Preview LLM-generated, theo yêu cầu người dùng): note `.md` có thể có
+> nhiều bản **HTML preview** sinh bởi LLM (Anthropic/OpenAI), gắn với note gốc (không phải export
+> tĩnh), báo **out-of-sync** khi note đổi, tạo lại được. Xử lý nền + polling (bấm Generate trả về
+> ngay, reload trang giữa chừng vẫn khôi phục đúng trạng thái). Lưu trong thư mục ẩn
+> `.html-preview/` trong vault (cùng quy ước ẩn với `.trash`). Xem trong tab riêng, iframe sandbox
+> cách ly session app. Settings mới nhóm `llm` (provider/API keys/model/template prompt CRUD).
 > Changelog 1.5 (FR-13 — Desktop app Electron đa nền tảng, theo yêu cầu người dùng): bổ sung **FR-13** —
 > đóng gói WebObsidian thành **app cài đặt** macOS/Windows/Linux (arm64/x64/ia32). Workspace mới `desktop/`
 > là **Electron shell** spawn đúng server Express hiện có như tiến trình con (qua `ELECTRON_RUN_AS_NODE`,
@@ -408,6 +414,37 @@ Express + SPA hiện có (không fork code, không đổi kiến trúc) — nên
   cảnh báo Gatekeeper/SmartScreen — chấp nhận cho self-hosted free).
 - **Phạm vi (non-goals)**: chưa auto-update (người dùng tải bản mới thủ công); chưa ký số; không nhúng git
   portable; không chạy nhiều cửa sổ/vault song song trong 1 instance (single-instance lock).
+
+### FR-14 · HTML Preview (LLM-generated, per-note)
+Mục tiêu: cho phép tạo **bản xem trước HTML** cho một note `.md`, sinh bởi LLM (Anthropic Claude
+hoặc OpenAI) dựa trên nội dung note + một prompt hướng dẫn. Không phải export tĩnh 1-lần: HTML
+được gắn với note gốc, hiển thị trạng thái **out-of-sync** khi note đổi, và tạo lại được bất cứ
+lúc nào. Một note có thể có **nhiều bản preview** khác nhau (mỗi bản ứng với 1 prompt/template).
+
+- **Cấu hình LLM**: Settings → AI — chọn provider (Anthropic/OpenAI), API key riêng cho từng
+  provider (che sau khi lưu, giống token Git), model OpenAI có thể chỉnh (mặc định `gpt-4o`),
+  Anthropic luôn dùng alias Claude Sonnet mới nhất (không cho chỉnh). Danh sách **template prompt**
+  (tên + nội dung) quản lý CRUD ngay trong cùng trang.
+- **Trigger**: menu "⋯" của pane note đang mở (chỉ với file `.md`) → "HTML Preview…" → hộp thoại
+  liệt kê preview đã có (tên, trạng thái, out-of-sync), Rename/Delete từng dòng, "+ Tạo preview
+  mới" (chọn template có sẵn hoặc gõ prompt tuỳ ý, tuỳ chọn lưu thành template).
+- **Xử lý nền + polling**: bấm Generate trả về ngay bản ghi trạng thái `generating` (ghi đĩa trước
+  khi gọi LLM) — **reload trang giữa chừng vẫn khôi phục đúng trạng thái** (client poll lại). Server
+  khởi động lại giữa lúc đang generate → job dở dang tự chuyển `error` thay vì treo vĩnh viễn.
+- **Lưu trữ**: preview lưu trong thư mục ẩn `.html-preview/` ngay trong vault (cùng quy ước ẩn với
+  `.trash` — tự động không hiện trong file tree/search/link graph/watcher). Mỗi bản ghi gồm note
+  nào, tên, prompt/template dùng, trạng thái, "dấu vân tay" (hash) nội dung note tại lần tạo thành
+  công gần nhất (để tính out-of-sync).
+- **Xem preview**: mở trong tab riêng của app (sentinel path `htmlpreview://<id>`, giống cách
+  Graph view dùng `graph://view`), nội dung render trong `<iframe sandbox="allow-scripts">` (cách
+  ly khỏi cookie/session app — phòng LLM sinh mã độc hại). Badge trạng thái + nút "Tạo lại" ngay
+  trong tab.
+- **Phạm vi (non-goals) v1**: không share public bản preview (khác "Share…"); không áp dụng cho
+  `.canvas`.
+
+API mới: `GET/POST /api/html-preview`, `GET/POST /api/html-preview/{id}`, `POST
+/api/html-preview/{id}/regenerate`, `PATCH/DELETE /api/html-preview/{id}`. Settings mới nhóm `llm`
+(`provider`, `anthropicApiKey`, `openaiApiKey`, `openaiModel`, `templates[]`).
 
 ---
 
