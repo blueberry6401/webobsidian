@@ -271,4 +271,7 @@ export const api = {
   renameHtmlPreview: (id: string, name: string) =>
     req<{ preview: HtmlPreviewRecord }>(`/api/html-preview/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   deleteHtmlPreview: (id: string) => req<{ ok: true }>(`/api/html-preview/${id}`, { method: 'DELETE' }),
+  // Real navigation URL for the <iframe src=…> — gets its own CSP (allows the inline
+  // <script>/onclick LLM-generated pages use), unlike srcDoc which inherits the app's CSP.
+  htmlPreviewRawUrl: (id: string) => `/api/html-preview/${id}/raw`,
 };
