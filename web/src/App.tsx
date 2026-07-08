@@ -10,6 +10,7 @@ import Workspace from './components/Workspace';
 import CommandPalette from './components/CommandPalette';
 import Settings from './components/Settings';
 import ShareDialog from './components/ShareDialog';
+import HtmlPreviewDialog from './components/HtmlPreviewDialog';
 import VersionHistory from './components/VersionHistory';
 import TrashView from './components/TrashView';
 import ContextMenu from './components/ContextMenu';
@@ -185,6 +186,7 @@ export default function App() {
       <CommandPalette />
       <Settings />
       <ShareDialog />
+      <HtmlPreviewDialog />
       <VersionHistory />
       <TrashView />
       <ContextMenu />
