@@ -81,7 +81,7 @@ export default function HtmlPreviewView({ previewId }: { previewId: string }) {
         {preview.status === 'done' ? (
           <iframe
             className="html-preview-frame"
-            sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+            sandbox="allow-scripts allow-popups"
             src={api.htmlPreviewRawUrl(previewId)}
             title={preview.name}
           />
