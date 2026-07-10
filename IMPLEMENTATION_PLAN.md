@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-08 (FR-14 — HTML Preview LLM-generated per-note)
+Cập nhật lần cuối: 2026-07-10 (M7.6 — Agent API PATCH notes find/replace nguyên tử, PRD 1.8)
 
 ---
 
@@ -63,6 +63,10 @@ Cập nhật lần cuối: 2026-07-08 (FR-14 — HTML Preview LLM-generated per-
 - [x] M7.3 `/api/v1`: notes list/read/write/append/delete, search, backlinks, tags
 - [x] M7.4 Route quản lý key `GET/POST/DELETE /api/keys`
 - [x] M7.5 Tài liệu agent API (`docs/AGENT_API.md`)
+- [x] M7.6 `PATCH /api/v1/notes/{path}` hỗ trợ find/replace nguyên tử (PRD 1.8): body
+      `{find, replace, replaceAll?}` → hàm thuần `applyEdit` (`services/noteedit.ts`, split/join,
+      không regex); 400 `invalid_body` · 404 · 409 `find_not_found`/`find_ambiguous`+count;
+      body không có `find` giữ nguyên append cũ 100%
 
 ## Phase 8 — Community plugins — FR-8
 - [x] M8.1 Đọc `.obsidian/plugins/*` (manifest + main.js)
@@ -469,6 +473,19 @@ Cập nhật lần cuối: 2026-07-08 (FR-14 — HTML Preview LLM-generated per-
       rename/delete, thiếu key báo lỗi rõ, `.html-preview/` không lộ ra file tree/search/watcher
 
 ### Nhật ký tiến độ
+- 2026-07-10: M7.6 (PRD 1.8, FR-6) — Agent API `PATCH /api/v1/notes/{path}` hỗ trợ **find/replace
+  nguyên tử** phía server (contract chốt với MCP client): body `{find, replace, replaceAll?}` →
+  400 `invalid_body` (sai kiểu / `find` rỗng / có cả `find` lẫn `append`), 404 note không tồn tại,
+  409 `find_not_found` / `find_ambiguous`+count (≥2 khớp không `replaceAll:true`), thành công trả
+  `{ok, path, replaced}` + reindex. Logic tách thành hàm thuần `applyEdit`
+  (`server/src/services/noteedit.ts`) — literal string, indexOf + split/join, miễn nhiễm regex chars
+  trong `find` và bẫy `$&`/`$1`/`$$` trong `replace`; nhận field `find` bằng own-property check nên
+  body không có `find` (kể cả body mảng/rỗng) đi nguyên nhánh append cũ, không phá client cũ. Repo
+  chưa có test framework → viết TDD bằng script `server/scripts/verify-agent-edit.ts` (tsx): 12 unit
+  case cho `applyEdit` + 29 case e2e dựng server THẬT với vault/data dir tạm, seed API key, gọi HTTP
+  thật — chạy đỏ trước khi implement (18 fail đúng nhánh chưa có), xanh sau (42 passed / 0 failed),
+  gồm cả: append cũ giữ nguyên byte-level (kể cả quirk thêm `\n` khi append rỗng vào file không kết
+  thúc newline), search index thấy nội dung mới sau edit, key sai vẫn 401. Typecheck 2 workspace sạch.
 - 2026-07-08: Phase 29 (PRD 1.7, FR-14) — HTML Preview LLM-generated per-note. Note `.md` có thể có
   nhiều bản HTML preview (Anthropic/OpenAI, template prompt tái sử dụng), gắn với note gốc + báo
   out-of-sync qua sha256 hash, xử lý nền + polling (reload giữa lúc generate vẫn khôi phục đúng
