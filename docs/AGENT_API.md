@@ -19,7 +19,7 @@ All `{path}` values are vault-relative (URL-encode slashes are fine, e.g. `Notes
 | GET | `/api/v1/notes?offset=&limit=` | read | List markdown notes (paginated) |
 | GET | `/api/v1/notes/{path}` | read | Read a note + parsed metadata |
 | PUT | `/api/v1/notes/{path}` | write | Create/overwrite a note (`{ "content": "..." }`) |
-| PATCH | `/api/v1/notes/{path}` | write | Append (`{ "append": "..." }`) |
+| PATCH | `/api/v1/notes/{path}` | write | Append (`{ "append": "..." }`) or atomic find/replace (`{ "find": "...", "replace": "...", "replaceAll?": true }`) |
 | DELETE | `/api/v1/notes/{path}` | write | Move note to trash |
 | GET | `/api/v1/search?q=&limit=` | search | QMD search |
 | GET | `/api/v1/backlinks?path=` | read | Notes linking to a path |
@@ -45,6 +45,13 @@ curl -X PUT -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
 # append
 curl -X PATCH -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
   -d '{"append":"\n- a new bullet"}' "$BASE/notes/Agent/Generated.md"
+
+# atomic find/replace — `find` is a literal string (not regex) and must be non-empty.
+# 404 if the note is missing; 409 {"error":"find_not_found"} if `find` does not occur;
+# 409 {"error":"find_ambiguous","count":N} if it occurs more than once without
+# "replaceAll": true. Success returns {"ok":true,"path":...,"replaced":N}.
+curl -X PATCH -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"find":"old text","replace":"new text"}' "$BASE/notes/Agent/Generated.md"
 
 # search (fielded queries supported: tag:, path:, title:)
 curl -H "X-API-Key: $KEY" "$BASE/search?q=tag:idea%20graph&limit=5"
