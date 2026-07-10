@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-06-27 (security fix — chặn leo thang quyền token share; merge fix F-03 rate-limit, giữ `trust proxy` mặc định bật)
+Cập nhật lần cuối: 2026-07-10 (Phase 28 — collapsible headings trong Reading view, persist localStorage)
 
 ---
 
@@ -430,6 +430,15 @@ Cập nhật lần cuối: 2026-06-27 (security fix — chặn leo thang quyền
       `desktop/release`.
 
 ### Nhật ký tiến độ
+- 2026-07-10: Phase 28 — Collapsible headings (Reading view). Phát hiện Reading view thực chất là
+  CM6 Live Preview read-only (không phải `Preview.tsx`), nên fold heading cài như StateField CM6
+  (`headingFoldDeco`) mirror callout-fold: chevron widget + block-replace ẩn section tới heading
+  cùng/cao cấp kế; derive từ localStorage mỗi build (key breadcrumb theo note), chỉ ở readonly.
+  Logic thuần + persist tách `web/src/lib/headingFold.ts` (+ `headingFoldControls` singleton cho
+  Collapse/Expand-all trong menu ⋯). `Preview.tsx` (split/mobile) có bản DOM tương đương. Thêm
+  Vitest (9 test: key breadcrumb + jsdom fold DOM). Verify Playwright headless server thật 12/12
+  (collapse "Ngày 3" ẩn tới "Ngày 4", persist reload, collapse/expand-all, callout không fold).
+  Build + typecheck sạch. Xem `docs/superpowers/specs/2026-07-10-collapsible-headings-design.md`.
 - 2026-06-27 (security fix — leo thang quyền qua token share): `verifyToken()` (server/src/services/auth.ts)
   chỉ kiểm tra chữ ký nên **mọi** token ký bằng `auth.jwtSecret` đều được chấp nhận như phiên owner. Endpoint
   public `POST /public/shares/:id/unlock` ký unlock-cookie bằng cùng secret → người được chia sẻ (có mật khẩu
