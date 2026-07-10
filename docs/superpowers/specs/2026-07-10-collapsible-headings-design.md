@@ -1,7 +1,17 @@
 # Collapsible headings trong Reading view
 
 **Ngày:** 2026-07-10
-**Trạng thái:** Đã chốt thiết kế, sẵn sàng viết plan.
+**Trạng thái:** Đã triển khai + verify (Playwright headless 12/12, Vitest 9/9).
+
+> **Cập nhật khi thực thi (quan trọng):** Reading view của WebObsidian KHÔNG dùng
+> `Preview.tsx` — `EditorPane` luôn render `<Editor />` (CodeMirror Live Preview)
+> và "Reading" chỉ là chế độ read-only của editor đó. `Preview.tsx` chỉ dùng cho
+> split-pane/mobile embed. Vì vậy tính năng fold heading cho Reading view được
+> cài trong CodeMirror (`web/src/lib/livePreview.ts`: `headingFoldDeco` StateField
+> mirror `calloutFoldDeco` — chevron widget + `Decoration.replace({block:true})`),
+> gate `livePreviewReadonly`. Logic thuần key/persist ở `headingFold.ts` (dùng
+> chung cho cả bản `Preview.tsx`). Phần mô tả bên dưới giữ nguyên thiết kế gốc;
+> nơi ghi "Preview.tsx" hiểu là "reading view", thực thi ở CodeMirror.
 
 ## Mục tiêu
 
