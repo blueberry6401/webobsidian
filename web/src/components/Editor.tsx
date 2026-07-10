@@ -23,6 +23,10 @@ import {
   htmlPreviewField,
   calloutFoldState,
   calloutFoldDeco,
+  notePathField,
+  setNotePath,
+  headingFoldDeco,
+  headingFoldControlsPlugin,
   noteTitleField,
   inlineTitleField,
   editorClickFix,
@@ -286,6 +290,9 @@ export default function Editor() {
         htmlPreviewField,
         calloutFoldState,
         calloutFoldDeco,
+        notePathField.init(() => activePath),
+        headingFoldDeco,
+        headingFoldControlsPlugin,
         livePreviewPlugin,
         livePreviewTheme,
         editorClickFix,
@@ -334,6 +341,7 @@ export default function Editor() {
         setLivePreviewReadonly.of(viewMode === 'reading'),
         readonlyComp.reconfigure(readonlyExt(viewMode === 'reading')),
         setNoteTitle.of(titleOf(activePath)),
+        setNotePath.of(activePath),
       ],
     });
   }, [viewMode, activePath]);

@@ -544,6 +544,15 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
   color: rgb(var(--callout-color, var(--callout-default))); transition: transform var(--transition); }
 .cm-callout-fold svg { width: 16px; height: 16px; }
 .cm-callout-fold.is-folded { transform: rotate(-90deg); }
+/* Collapsible headings (reading view) — chevron before the heading, hover-reveal */
+.cm-heading-fold { display: inline-flex; align-items: center; justify-content: center;
+  width: 0.9em; margin-left: -1em; margin-right: 0.1em; vertical-align: middle;
+  color: var(--text-faint); cursor: pointer; opacity: 0;
+  transition: opacity var(--transition), transform var(--transition); }
+.cm-heading-fold svg { width: 0.7em; height: 0.7em; }
+.cm-s-obsidian .cm-line.HyperMD-header:hover .cm-heading-fold { opacity: 1; }
+.cm-heading-fold.is-folded { opacity: 1; transform: rotate(-90deg); }
+@media (hover: none), (pointer: coarse) { .cm-heading-fold { opacity: 1; } }
 /* Callout (per-line rendering; colors via --callout-color RGB triplet) */
 .cm-s-obsidian .cm-line.cm-callout-line { background: rgba(var(--callout-color, var(--callout-default)), 0.1);
   mix-blend-mode: var(--highlight-mix-blend-mode); padding-left: 24px; padding-right: 12px; }
