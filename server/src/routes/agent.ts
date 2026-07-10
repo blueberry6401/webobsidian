@@ -5,6 +5,7 @@ import * as vault from '../services/vault.js';
 import { qmd } from '../services/search.js';
 import { backlinksFor, buildLinkGraph } from '../services/links.js';
 import { parseNote } from '../services/markdown.js';
+import { applyEdit } from '../services/noteedit.js';
 
 /**
  * Agent API (PRD FR-6) — REST surface for AI agents, authenticated by API key.
@@ -67,12 +68,43 @@ agentRouter.put(
   }),
 );
 
-// Append to a note (creates if missing)
+// PATCH: append (creates if missing) HOẶC find/replace nguyên tử (PRD 1.8, FR-6).
+// Body có field `find` → nhánh edit; không có → hành vi append cũ giữ nguyên 100%.
 agentRouter.patch(
   '/notes/*',
   requireApiKey('write'),
   asyncHandler(async (req, res) => {
     const rel = decodeURIComponent((req.params as any)[0]);
+    const body: unknown = req.body;
+    // Own-property check (không dùng `in`): body dạng mảng vẫn phải đi nhánh append cũ
+    // dù `Array.prototype.find` tồn tại trên prototype chain.
+    const hasField = (obj: unknown, key: string): boolean =>
+      typeof obj === 'object' && obj !== null && Object.prototype.hasOwnProperty.call(obj, key);
+
+    if (hasField(body, 'find')) {
+      // --- Nhánh edit find/replace nguyên tử ---
+      const { find, replace, replaceAll } = body as { find: unknown; replace: unknown; replaceAll?: unknown };
+      if (hasField(body, 'append') || typeof find !== 'string' || find === '' || typeof replace !== 'string') {
+        res.status(400).json({ error: 'invalid_body' });
+        return;
+      }
+      if (!(await vault.exists(rel))) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      const content = await vault.readFileText(rel);
+      const result = applyEdit(content, find, replace, replaceAll === true);
+      if ('error' in result) {
+        res.status(409).json(result.error === 'find_ambiguous' ? { error: result.error, count: result.count } : { error: result.error });
+        return;
+      }
+      await vault.writeFileText(rel, result.content);
+      reindex(rel);
+      res.json({ ok: true, path: rel, replaced: result.replaced });
+      return;
+    }
+
+    // --- Nhánh append cũ (không đổi) ---
     const append = typeof req.body?.append === 'string' ? req.body.append : '';
     const existing = (await vault.exists(rel)) ? await vault.readFileText(rel) : '';
     const joined = existing && !existing.endsWith('\n') ? existing + '\n' + append : existing + append;
