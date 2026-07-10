@@ -14,6 +14,7 @@ import { editorFind, getActiveEditor } from '../lib/activeEditor';
 import { triggerAddProperty } from '../lib/livePreview';
 import { pathToUrl } from '../lib/urlsync';
 import { VIDEO_EXT_RE, AUDIO_EXT_RE } from '../lib/media';
+import { getFoldControls } from '../lib/headingFoldControls';
 
 function EditorPane() {
   const activePath = useStore((s) => s.activePath);
@@ -146,6 +147,15 @@ export default function Workspace() {
       ];
     } else {
       const sep: ContextMenuItem = { label: '', separator: true };
+      // Collapse/expand tất cả heading — chỉ có nghĩa ở Reading view.
+      const foldItems: ContextMenuItem[] =
+        isMd && viewMode === 'reading'
+          ? [
+              { label: 'Collapse all headings', icon: 'chevrons-down-up', onClick: () => getFoldControls()?.collapseAll() },
+              { label: 'Expand all headings', icon: 'chevrons-up-down', onClick: () => getFoldControls()?.expandAll() },
+              sep,
+            ]
+          : [];
       const renameItem: ContextMenuItem = {
         label: 'Rename…',
         icon: 'pencil',
@@ -179,6 +189,7 @@ export default function Workspace() {
         },
       };
       items = [
+        ...foldItems,
         ...(isMd ? [{ label: 'Backlinks in document', icon: 'link', onClick: () => setRightPanel('backlinks') }, sep] : []),
         ...(canSplit
           ? [
