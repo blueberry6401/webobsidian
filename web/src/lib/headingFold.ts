@@ -52,7 +52,8 @@ export function saveCollapsed(notePath: string, keys: Set<string>): void {
     const all = readAll();
     if (keys.size === 0) delete all[notePath];
     else all[notePath] = [...keys];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    if (Object.keys(all).length === 0) localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
   } catch {
     /* localStorage unavailable (private mode/quota) — fold works in-session only */
   }
