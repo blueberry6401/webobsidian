@@ -700,6 +700,21 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .callout-fold { display: inline-flex; margin-left: 4px; color: rgb(var(--callout-color)); transition: transform var(--transition); }
 .callout-fold svg { width: 16px; height: 16px; }
 .callout.is-collapsed .callout-fold { transform: rotate(-90deg); }
+/* Collapsible headings (reading view) — chevron ẩn, hiện khi hover dòng heading */
+.markdown-preview .heading-foldable { position: relative; }
+.markdown-preview .heading-fold {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1em; margin-left: -1.1em; margin-right: 0.1em;
+  color: var(--text-faint); cursor: pointer;
+  opacity: 0; transition: opacity var(--transition), transform var(--transition);
+  vertical-align: middle;
+}
+.markdown-preview .heading-fold svg { width: 0.7em; height: 0.7em; }
+.markdown-preview .heading-foldable:hover .heading-fold { opacity: 1; }
+.markdown-preview .heading-foldable.is-collapsed .heading-fold { opacity: 1; transform: rotate(-90deg); }
+@media (hover: none), (pointer: coarse) {
+  .markdown-preview .heading-fold { opacity: 1; }
+}
 /* type → color slot mapping (§21) */
 .callout[data-callout='abstract'], .callout[data-callout='summary'], .callout[data-callout='tldr'] { --callout-color: var(--callout-summary); }
 .callout[data-callout='info'] { --callout-color: var(--callout-info); }
