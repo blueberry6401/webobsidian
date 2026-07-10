@@ -1,7 +1,19 @@
 # PRD — WebObsidian
 
 > Product Requirements Document
-> Phiên bản: 1.7 · Cập nhật: 2026-07-08 · Trạng thái: Draft
+> Phiên bản: 1.8 · Cập nhật: 2026-07-10 · Trạng thái: Draft
+> Changelog 1.8 (FR-6 — Agent API: PATCH notes hỗ trợ find/replace nguyên tử, theo yêu cầu người dùng —
+> contract đã chốt với MCP client, không đổi): `PATCH /api/v1/notes/{path}` nhận thêm body
+> `{find, replace, replaceAll?}` để **sửa nội dung nguyên tử phía server** (đọc–đếm–thay–ghi trong 1
+> request, tránh race đọc/ghi 2 bước của agent). `find` là **literal string** (không regex), phải khác
+> rỗng; `replace` là string (được phép rỗng); sai kiểu / `find` rỗng / body có cả `find` lẫn `append`
+> → 400 `{error:"invalid_body"}`. Note không tồn tại → 404 `{error:"Not found"}`. Đếm số lần xuất
+> hiện: 0 → 409 `{error:"find_not_found"}`; ≥2 mà `replaceAll` không phải `true` → 409
+> `{error:"find_ambiguous", count}`; hợp lệ → thay (lần đầu tiên, hoặc tất cả nếu `replaceAll:true`),
+> ghi file + reindex, trả `{ok:true, path, replaced}`. Cài đặt bắt buộc dùng split/join (không đưa
+> `find`/`replace` vào `new RegExp()` hay pattern `$` đặc biệt của `String.replace`). Body **không có**
+> `find` → giữ nguyên 100% hành vi append cũ (kể cả thiếu `append` → append chuỗi rỗng) — không phá
+> client cũ. Logic thay thế tách thành hàm thuần `applyEdit` (`server/src/services/noteedit.ts`).
 > Changelog 1.7 (FR-14 — HTML Preview LLM-generated, theo yêu cầu người dùng): note `.md` có thể có
 > nhiều bản **HTML preview** sinh bởi LLM (Anthropic/OpenAI), gắn với note gốc (không phải export
 > tĩnh), báo **out-of-sync** khi note đổi, tạo lại được. Xử lý nền + polling (bấm Generate trả về
@@ -264,7 +276,14 @@ webobsidian/
 ### FR-6 · API Gate (AI Agent)
 - Quản lý nhiều **API key** (tạo/thu hồi, scope: read / write / search).
 - REST endpoints `/api/v1/*` xác thực bằng header `Authorization: Bearer <key>` hoặc `X-API-Key`.
-- Năng lực: list notes, read note, create/update/delete note, search, get backlinks, append.
+- Năng lực: list notes, read note, create/update/delete note, search, get backlinks, append,
+  edit find/replace nguyên tử.
+- **Edit find/replace nguyên tử** (`PATCH /api/v1/notes/{path}`, body `{find, replace, replaceAll?}`):
+  server tự đọc–đếm–thay–ghi trong 1 request để agent không phải làm read-modify-write 2 bước (race).
+  `find` literal string khác rỗng (không regex), `replace` string (được phép rỗng). Lỗi:
+  400 `invalid_body` (sai kiểu / `find` rỗng / có cả `find` lẫn `append`), 404 note không tồn tại,
+  409 `find_not_found` (0 khớp), 409 `find_ambiguous` + `count` (≥2 khớp mà không `replaceAll:true`).
+  Thành công trả `{ok, path, replaced}`. Body không có `find` → append như cũ (tương thích ngược).
 - Rate limit + audit log mỗi key.
 
 ### FR-7 · QMD Search engine
@@ -523,7 +542,9 @@ GET    /share/{id}                # trang HTML public — SERVER-RENDERED (SEO m
 GET    /api/v1/notes                 # list (paginate)
 GET    /api/v1/notes/{path}          # read
 PUT    /api/v1/notes/{path}          # create/update
-PATCH  /api/v1/notes/{path}/append   # append content
+PATCH  /api/v1/notes/{path}          # body {append} → append content;
+                                     # body {find, replace, replaceAll?} → find/replace nguyên tử
+                                     # (400 invalid_body · 404 · 409 find_not_found/find_ambiguous)
 DELETE /api/v1/notes/{path}
 GET    /api/v1/search?q=...&limit=
 GET    /api/v1/backlinks?path=
