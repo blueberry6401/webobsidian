@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-10 (M7.6 — Agent API PATCH notes find/replace nguyên tử, PRD 1.8)
+Cập nhật lần cuối: 2026-07-10 (Phase 28 — collapsible headings trong Reading view, persist localStorage)
 
 ---
 
@@ -472,7 +472,30 @@ Cập nhật lần cuối: 2026-07-10 (M7.6 — Agent API PATCH notes find/repla
       đang generate vẫn khôi phục đúng trạng thái, out-of-sync badge, tạo lại, nhiều preview/note,
       rename/delete, thiếu key báo lỗi rõ, `.html-preview/` không lộ ra file tree/search/watcher
 
+## Phase 30 — Collapsible headings trong Reading view — FR-2 (theo yêu cầu người dùng)
+- [x] M30.1 Fold heading trong Reading view (= Live Preview read-only, CM6). Logic thuần
+      `web/src/lib/headingFold.ts` (`computeHeadingKeys` breadcrumb + hậu tố `#n` khi trùng;
+      `loadCollapsed`/`saveCollapsed` localStorage key `webobsidian:heading-fold`, xoá key khi rỗng)
+      + unit test Vitest. CM6: `headingFoldDeco` StateField mirror `calloutFoldDeco` — chevron widget
+      mỗi heading + `Decoration.replace({block:true})` ẩn section tới heading cùng/cao cấp kế tiếp;
+      derive từ localStorage mỗi build (key theo `notePathField`), **chỉ khi readonly (reading)**;
+      bỏ qua heading trong callout (dòng `>`)/embed. Persist per-note qua reload/đổi note. Collapse/
+      Expand-all qua singleton `headingFoldControls` → menu ⋯ (chỉ hiện ở Reading). `Preview.tsx`
+      (split-pane/mobile) cũng có bản post-render DOM tương đương + jsdom integration test. Verify
+      Playwright headless server thật (vault tạm, login+set-pass): 12/12 — chevron hiện khi hover,
+      collapse "Ngày 3" ẩn nội dung tới trước "Ngày 4", persist sau reload, collapse/expand-all,
+      heading trong callout không fold. Typecheck + build + `vitest` (9/9) sạch.
+
 ### Nhật ký tiến độ
+- 2026-07-10: Phase 30 — Collapsible headings (Reading view). Phát hiện Reading view thực chất là
+  CM6 Live Preview read-only (không phải `Preview.tsx`), nên fold heading cài như StateField CM6
+  (`headingFoldDeco`) mirror callout-fold: chevron widget + block-replace ẩn section tới heading
+  cùng/cao cấp kế; derive từ localStorage mỗi build (key breadcrumb theo note), chỉ ở readonly.
+  Logic thuần + persist tách `web/src/lib/headingFold.ts` (+ `headingFoldControls` singleton cho
+  Collapse/Expand-all trong menu ⋯). `Preview.tsx` (split/mobile) có bản DOM tương đương. Thêm
+  Vitest (9 test: key breadcrumb + jsdom fold DOM). Verify Playwright headless server thật 12/12
+  (collapse "Ngày 3" ẩn tới "Ngày 4", persist reload, collapse/expand-all, callout không fold).
+  Build + typecheck sạch. Xem `docs/superpowers/specs/2026-07-10-collapsible-headings-design.md`.
 - 2026-07-10: M7.6 (PRD 1.8, FR-6) — Agent API `PATCH /api/v1/notes/{path}` hỗ trợ **find/replace
   nguyên tử** phía server (contract chốt với MCP client): body `{find, replace, replaceAll?}` →
   400 `invalid_body` (sai kiểu / `find` rỗng / có cả `find` lẫn `append`), 404 note không tồn tại,
