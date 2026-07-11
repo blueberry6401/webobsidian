@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-10 (Phase 28 — collapsible headings trong Reading view, persist localStorage)
+Cập nhật lần cuối: 2026-07-11 (fix bug — note bị scroll về đầu sau khi F5)
 
 ---
 
@@ -487,6 +487,19 @@ Cập nhật lần cuối: 2026-07-10 (Phase 28 — collapsible headings trong R
       heading trong callout không fold. Typecheck + build + `vitest` (9/9) sạch.
 
 ### Nhật ký tiến độ
+- 2026-07-11 (fix bug — F5 làm note đang xem bị scroll về đầu): `Editor.tsx` luôn destroy +
+  tạo mới `EditorView` mỗi khi `activePath` đổi (kể cả khi component remount do F5), với con trỏ
+  đặt ngay sau frontmatter và không có cơ chế lưu/khôi phục vị trí cuộn — `store.ts#PERSIST_KEYS`
+  chỉ lưu tab/activePath/viewMode… chứ không lưu scroll. **Sửa:** lưu `scrollTop` vào
+  `sessionStorage` theo từng path (debounce 150ms qua `EditorView.domEventHandlers({scroll})`),
+  khôi phục qua `requestAnimationFrame` khi `EditorView` được tạo. Vướng 1 race: sau F5, `content`
+  tải bất đồng bộ qua `hydrate()` nên effect đồng bộ nội dung ngoài ghi đè doc + reset selection
+  *sau* lần khôi phục đầu, xoá mất kết quả — sửa bằng cờ `scrollRestoredFor` (ref) để khôi phục
+  đúng một lần, ở effect nào thực sự có nội dung cuối cùng (tạo view nếu `content` đã có sẵn, hoặc
+  effect đồng bộ ngoài khi `content` tới sau). Đã verify bằng Playwright (Chromium headless) trên
+  dev server thật + sample-vault: cuộn note dài → F5 → giữ đúng `scrollTop`; chuyển qua note khác
+  và quay lại trong cùng phiên vẫn đúng vị trí riêng từng note; note khác không bị ảnh hưởng.
+  Typecheck sạch.
 - 2026-07-10: Phase 30 — Collapsible headings (Reading view). Phát hiện Reading view thực chất là
   CM6 Live Preview read-only (không phải `Preview.tsx`), nên fold heading cài như StateField CM6
   (`headingFoldDeco`) mirror callout-fold: chevron widget + block-replace ẩn section tới heading
