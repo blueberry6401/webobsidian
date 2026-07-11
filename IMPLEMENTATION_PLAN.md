@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-11 (fix bug — note bị scroll về đầu sau khi F5)
+Cập nhật lần cuối: 2026-07-11 (Outline navigation — click-to-jump + scroll-spy giống Google Docs)
 
 ---
 
@@ -486,7 +486,32 @@ Cập nhật lần cuối: 2026-07-11 (fix bug — note bị scroll về đầu 
       collapse "Ngày 3" ẩn nội dung tới trước "Ngày 4", persist sau reload, collapse/expand-all,
       heading trong callout không fold. Typecheck + build + `vitest` (9/9) sạch.
 
+## Phase 31 — Outline navigation (click-to-jump + scroll-spy) — FR-2 (theo yêu cầu người dùng)
+- [x] M31.1 Nâng cấp Outline panel (sidebar phải) thành thanh điều hướng giống outline Google Docs:
+      (1) đồng bộ bộ quét heading — `outline()` (`markdown.ts`) bỏ qua fenced code để khớp
+      `scanDocHeadings` (`livePreview.ts`, nay export) làm nguồn sự thật khi jump; test bất biến
+      cùng input → cùng danh sách `{level,text}`. (2) `outlineNav.ts`: helper thuần
+      `pickActiveHeading`/`ancestorIndices` + cầu nối CM `jumpToHeading(i)` (cuộn tới heading; ở
+      Reading tự mở các section collapsed che khuất qua `headingFoldRefresh`) và `activeHeadingIndex`.
+      (3) scroll-spy: `outlineActive.ts` singleton (getter/subscribe + `pinActiveHeading` ghim mục
+      vừa click ~700ms để heading cuối tài liệu highlight đúng dù không cuộn được lên đỉnh);
+      `Editor.tsx` tính `activeHeadingIndex` trên scroll/geometry (throttle rAF), reset khi unmount.
+      (4) `RightSidebar.OutlinePanel`: click → `jumpToHeading`, `.is-active` qua `useSyncExternalStore`,
+      auto-scroll mục active vào panel; CSS thanh accent trái. Áp dụng cả Reading + Editing, chỉ khung
+      editor chính (không đụng split-pane `Preview.tsx`/mobile). Verify Playwright headless server thật
+      (login+set-pass, note 9 heading + code fence): 10/10 — outline loại heading trong ```code, click
+      cuộn đúng, scroll-spy highlight theo cuộn, click mục cuối highlight đúng (pin), collapse+jump tự
+      mở section, Editing click-to-jump chạy. Typecheck + build + `vitest` (20/20) sạch.
+
 ### Nhật ký tiến độ
+- 2026-07-11 (Phase 31 — Outline navigation): biến Outline panel tĩnh thành thanh điều hướng
+  click-to-jump + scroll-spy (highlight heading đang xem) giống Google Docs. Điểm dễ vỡ nhất là
+  đồng bộ chỉ số heading giữa Outline (`outline()`) và editor (`scanDocHeadings`): trước đây
+  `outline()` không bỏ qua fenced code nên đếm cả `#` trong ```block```, làm click lệch — đã thống
+  nhất bộ quét + test bất biến. Papercut phát hiện khi E2E: click heading cuối tài liệu không cuộn
+  được lên đỉnh nên scroll-spy tô sáng heading ở đỉnh viewport thay vì mục vừa click — sửa bằng
+  cơ chế pin ngắn hạn trong `outlineActive` (ghim mục click active, chặn scroll-spy ghi đè ~700ms).
+  Verify Playwright (Chromium headless) trên prod build thật: 10/10.
 - 2026-07-11 (fix bug — F5 làm note đang xem bị scroll về đầu): `Editor.tsx` luôn destroy +
   tạo mới `EditorView` mỗi khi `activePath` đổi (kể cả khi component remount do F5), với con trỏ
   đặt ngay sau frontmatter và không có cơ chế lưu/khôi phục vị trí cuộn — `store.ts#PERSIST_KEYS`
