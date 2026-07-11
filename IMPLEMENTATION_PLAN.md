@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-06-27 (security fix — chặn leo thang quyền token share; merge fix F-03 rate-limit, giữ `trust proxy` mặc định bật)
+Cập nhật lần cuối: 2026-07-10 (fix bug — note bị scroll về đầu sau khi F5)
 
 ---
 
@@ -430,6 +430,19 @@ Cập nhật lần cuối: 2026-06-27 (security fix — chặn leo thang quyền
       `desktop/release`.
 
 ### Nhật ký tiến độ
+- 2026-07-10 (fix bug — F5 làm note đang xem bị scroll về đầu): `Editor.tsx` luôn destroy +
+  tạo mới `EditorView` mỗi khi `activePath` đổi (kể cả khi component remount do F5), với con trỏ
+  đặt ngay sau frontmatter và không có cơ chế lưu/khôi phục vị trí cuộn — `store.ts#PERSIST_KEYS`
+  chỉ lưu tab/activePath/viewMode… chứ không lưu scroll. **Sửa:** lưu `scrollTop` vào
+  `sessionStorage` theo từng path (debounce 150ms qua `EditorView.domEventHandlers({scroll})`),
+  khôi phục qua `requestAnimationFrame` khi `EditorView` được tạo. Vướng 1 race: sau F5, `content`
+  tải bất đồng bộ qua `hydrate()` nên effect đồng bộ nội dung ngoài (dòng ~353) ghi đè doc + reset
+  selection *sau* lần khôi phục đầu, xoá mất kết quả — sửa bằng cờ `scrollRestoredFor` (ref) để
+  khôi phục đúng một lần, ở effect nào thực sự có nội dung cuối cùng (tạo view nếu `content` đã có
+  sẵn, hoặc effect đồng bộ ngoài khi `content` tới sau). Đã verify bằng Playwright (Chromium headless)
+  trên dev server thật + sample-vault: cuộn note dài → F5 → giữ đúng `scrollTop`; chuyển qua note
+  khác và quay lại trong cùng phiên vẫn đúng vị trí riêng từng note; note khác không bị ảnh hưởng.
+  Typecheck sạch.
 - 2026-06-27 (security fix — leo thang quyền qua token share): `verifyToken()` (server/src/services/auth.ts)
   chỉ kiểm tra chữ ký nên **mọi** token ký bằng `auth.jwtSecret` đều được chấp nhận như phiên owner. Endpoint
   public `POST /public/shares/:id/unlock` ký unlock-cookie bằng cùng secret → người được chia sẻ (có mật khẩu
