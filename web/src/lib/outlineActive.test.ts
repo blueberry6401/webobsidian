@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { setActiveHeading, getActiveHeading, subscribeActiveHeading } from './outlineActive';
+import { setActiveHeading, getActiveHeading, subscribeActiveHeading, pinActiveHeading } from './outlineActive';
 
-beforeEach(() => setActiveHeading(-1));
+beforeEach(() => pinActiveHeading(-1, 0));
 
 describe('outlineActive store', () => {
   it('lưu và trả về index hiện tại', () => {
@@ -21,5 +21,14 @@ describe('outlineActive store', () => {
     un();
     setActiveHeading(7);
     expect(calls).toBe(2); // đã unsubscribe
+  });
+
+  it('pin chặn scroll-spy ghi đè trong thời gian ghim', () => {
+    pinActiveHeading(4, 10_000); // ghim lâu
+    setActiveHeading(1); // scroll-spy cố ghi đè → bị chặn
+    expect(getActiveHeading()).toBe(4);
+    pinActiveHeading(4, 0); // gỡ ghim
+    setActiveHeading(1); // giờ cập nhật được
+    expect(getActiveHeading()).toBe(1);
   });
 });
