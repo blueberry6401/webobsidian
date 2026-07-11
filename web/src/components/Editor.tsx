@@ -45,6 +45,19 @@ import { api } from '../lib/api';
 const titleOf = (path: string | null) =>
   path ? (path.split('/').pop() ?? path).replace(/\.(md|markdown)$/i, '') : '';
 
+// Scroll position per note (device-local, survives F5 via sessionStorage — the
+// EditorView is torn down and recreated from scratch on every reload/file switch,
+// so without this it always resets to the top).
+const scrollKey = (path: string) => `wo:scroll:${path}`;
+const loadScrollTop = (path: string): number | null => {
+  const raw = sessionStorage.getItem(scrollKey(path));
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) ? n : null;
+};
+const saveScrollTop = (path: string, top: number) => {
+  sessionStorage.setItem(scrollKey(path), String(top));
+};
+
 // Reading mode = the same Live Preview editor, made read-only via this compartment.
 const readonlyExt = (reading: boolean) =>
   reading ? [EditorView.editable.of(false), EditorState.readOnly.of(true)] : [];
@@ -54,6 +67,9 @@ export default function Editor() {
   const view = useRef<EditorView | null>(null);
   const readonlyComp = useRef(new Compartment()).current;
   const applyingExternal = useRef(false);
+  // Path we've already restored the scroll position for, so a later cross-tab
+  // content sync doesn't keep yanking the user back after they've scrolled.
+  const scrollRestoredFor = useRef<string | null>(null);
   const activePath = useStore((s) => s.activePath);
   const content = useStore((s) => s.content);
   const setContent = useStore((s) => s.setContent);
@@ -234,11 +250,23 @@ export default function Editor() {
     });
   };
 
+  // Restore a note's saved scroll position at most once per mount — guarded so a
+  // later cross-tab content sync doesn't keep yanking the user back after they've
+  // since scrolled elsewhere themselves.
+  const restoreScrollOnce = (v: EditorView, path: string) => {
+    if (scrollRestoredFor.current === path) return;
+    scrollRestoredFor.current = path;
+    const savedTop = loadScrollTop(path);
+    if (savedTop !== null) requestAnimationFrame(() => { v.scrollDOM.scrollTop = savedTop; });
+  };
+
   // (Re)create the view when the active file changes.
   useEffect(() => {
     if (!host.current) return;
     view.current?.destroy();
+    scrollRestoredFor.current = null;
 
+    let scrollSaveTimer = 0;
     const isMd = activePath ? /\.(md|markdown)$/i.test(activePath) : false;
     // Place the caret after the frontmatter so Properties render immediately.
     const fmMatch = isMd ? content.match(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/) : null;
@@ -293,13 +321,25 @@ export default function Editor() {
           // Ignore doc changes we applied programmatically (external content sync)
           if (u.docChanged && !applyingExternal.current) setContent(u.state.doc.toString());
         }),
+        EditorView.domEventHandlers({
+          scroll: (_event, ev) => {
+            if (!activePath) return;
+            window.clearTimeout(scrollSaveTimer);
+            scrollSaveTimer = window.setTimeout(() => saveScrollTop(activePath, ev.scrollDOM.scrollTop), 150);
+          },
+        }),
       ],
     });
     const v = new EditorView({ state, parent: host.current });
     view.current = v;
     setActiveEditor(v);
     v.focus();
+    // Only safe to restore here if `content` is already the note's real content —
+    // on reload it's still the pre-hydrate placeholder, and the content-sync effect
+    // below will apply the real text (and restore scroll) once it arrives.
+    if (activePath && content) restoreScrollOnce(v, activePath);
     return () => {
+      window.clearTimeout(scrollSaveTimer);
       setActiveEditor(null);
       v.destroy();
     };
@@ -323,6 +363,8 @@ export default function Editor() {
       selection: { anchor: initPos },
     });
     applyingExternal.current = false;
+    if (activePath) restoreScrollOnce(v, activePath);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content]);
 
   // Toggle live preview / readonly when the view mode changes (no recreate).
