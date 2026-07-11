@@ -833,7 +833,7 @@ export const headingFoldRefresh = StateEffect.define<null>();
 const HEADING_LINE_RE = /^(#{1,6})\s+(.*\S)\s*$/;
 const FENCE_RE = /^\s*(```|~~~)/;
 
-interface DocHeading {
+export interface DocHeading {
   level: number;
   text: string;
   lineFrom: number;
@@ -842,7 +842,7 @@ interface DocHeading {
 }
 
 /** Scan the document for ATX headings, skipping fenced code blocks. */
-function scanDocHeadings(doc: Text): DocHeading[] {
+export function scanDocHeadings(doc: Text): DocHeading[] {
   const out: DocHeading[] = [];
   let inFence = false;
   for (let n = 1; n <= doc.lines; n++) {
