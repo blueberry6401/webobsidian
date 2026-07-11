@@ -6,6 +6,7 @@ import { EditorView } from '@codemirror/view';
 import { getActiveEditor } from './activeEditor';
 import { scanDocHeadings, livePreviewReadonly, notePathField, headingFoldRefresh } from './livePreview';
 import { computeHeadingKeys, loadCollapsed, saveCollapsed } from './headingFold';
+import { pinActiveHeading } from './outlineActive';
 
 /** Heading "đang xem" = heading cuối cùng có top ≤ scrollTop + topMargin.
  *  `tops` tăng dần (thứ tự tài liệu). Trả 0 khi chưa cuộn qua heading nào,
@@ -43,6 +44,10 @@ export function jumpToHeading(index: number): boolean {
   if (!view) return false;
   const heads = scanDocHeadings(view.state.doc);
   if (index < 0 || index >= heads.length) return false;
+
+  // Ghim mục vừa click active ngay (Google Docs highlight đúng mục dù không cuộn
+  // được lên đỉnh với heading cuối tài liệu).
+  pinActiveHeading(index);
 
   const reading = view.state.field(livePreviewReadonly, false) ?? false;
   if (reading) {
