@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useStore } from '../lib/store';
 import { api, type NoteMatches } from '../lib/api';
 import { outline } from '../lib/markdown';
+import { jumpToHeading } from '../lib/outlineNav';
+import { subscribeActiveHeading, getActiveHeading } from '../lib/outlineActive';
 import TagsPanel from './TagsPanel';
 import Icon from './Icon';
 
@@ -217,15 +219,28 @@ function OutgoingPanel() {
 function OutlinePanel() {
   const content = useStore((s) => s.content);
   const heads = outline(content);
+  const active = useSyncExternalStore(subscribeActiveHeading, getActiveHeading);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  // Cuộn mục đang active vào tầm nhìn của panel khi note dài.
+  useEffect(() => {
+    bodyRef.current?.querySelector('.outline-item.is-active')?.scrollIntoView({ block: 'nearest' });
+  }, [active]);
+
   return (
     <>
       <div className="nav-header">
         <span className="nav-title">Outline</span>
       </div>
-      <div className="sidebar-body">
+      <div className="sidebar-body" ref={bodyRef}>
         {heads.length === 0 && <div className="panel-item">No headings</div>}
         {heads.map((h, i) => (
-          <div key={i} className="outline-item" style={{ paddingLeft: 10 + (h.level - 1) * 12 }}>
+          <div
+            key={i}
+            className={'outline-item' + (i === active ? ' is-active' : '')}
+            style={{ paddingLeft: 10 + (h.level - 1) * 12 }}
+            onClick={() => jumpToHeading(i)}
+          >
             {h.text}
           </div>
         ))}

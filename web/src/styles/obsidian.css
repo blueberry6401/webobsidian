@@ -898,6 +898,11 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .mention-box .mention-src { color: var(--text-accent); font-weight: 600; margin-bottom: 4px; cursor: pointer; }
 .outline-item { padding: 3px 10px; font-size: 13px; cursor: pointer; color: var(--text-muted); border-radius: var(--radius-s); }
 .outline-item:hover { color: var(--text-normal); background: var(--bg-modifier-hover); }
+.outline-item.is-active {
+  color: var(--text-normal);
+  background: var(--bg-modifier-hover);
+  box-shadow: inset 2px 0 0 var(--interactive-accent);
+}
 
 /* Status bar — anchored to the bottom-right of the editor pane (like Obsidian) */
 .status-bar {
