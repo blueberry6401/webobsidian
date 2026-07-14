@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-11 (Outline navigation — click-to-jump + scroll-spy giống Google Docs)
+Cập nhật lần cuối: 2026-07-14 (fix bug — chevron collapse heading bị cắt nửa trên mobile)
 
 ---
 
@@ -504,6 +504,15 @@ Cập nhật lần cuối: 2026-07-11 (Outline navigation — click-to-jump + sc
       mở section, Editing click-to-jump chạy. Typecheck + build + `vitest` (20/20) sạch.
 
 ### Nhật ký tiến độ
+- 2026-07-14 (fix bug — chevron collapse heading bị cắt nửa trên mobile): `.cm-heading-fold`
+  (`web/src/styles/obsidian.css`) dùng `margin-left: -1em` cố định để kéo chevron ra trước heading.
+  Vấn đề: `em` ăn theo font-size của heading (H1 = 1.618×), trong khi lề trái `.cm-content`
+  (`--file-margins`) co xuống 14px trên mobile (desktop 32px) — với H1, `-1em` ≈ -26px > 14px lề,
+  chevron bị đẩy ra ngoài `.cm-content` và bị cắt bởi `overflow-x: hidden` (rule mobile chống trôi
+  ngang). Đo bằng Playwright (viewport 390×844, prod build thật): trước fix chevron x=-11.9px (≈
+  một nửa icon 23px nằm ngoài màn hình — khớp mô tả lỗi); sau fix x=2px. **Sửa:** kẹp margin bằng
+  `max(-1em, calc(-1 * var(--file-margins) + 2px))` — chọn mức kéo nhỏ hơn giữa em heading và lề
+  thực tế, giữ nguyên hành vi desktop (lề rộng hơn 1em nên vẫn dùng nhánh `-1em` cũ). Build sạch.
 - 2026-07-11 (Phase 31 — Outline navigation): biến Outline panel tĩnh thành thanh điều hướng
   click-to-jump + scroll-spy (highlight heading đang xem) giống Google Docs. Điểm dễ vỡ nhất là
   đồng bộ chỉ số heading giữa Outline (`outline()`) và editor (`scanDocHeadings`): trước đây

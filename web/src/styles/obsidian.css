@@ -546,7 +546,12 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .cm-callout-fold.is-folded { transform: rotate(-90deg); }
 /* Collapsible headings (reading view) — chevron before the heading, hover-reveal */
 .cm-heading-fold { display: inline-flex; align-items: center; justify-content: center;
-  width: 0.9em; margin-left: -1em; margin-right: 0.1em; vertical-align: middle;
+  width: 0.9em; margin-right: 0.1em; vertical-align: middle;
+  /* H1's em is ~1.6x the base font, so a flat -1em can pull the chevron past
+     the available gutter on narrow screens (--file-margins shrinks to 14px on
+     mobile) and get clipped by .cm-content's overflow-x: hidden. Clamp to
+     whichever pull is smaller: the heading's own em, or the actual gutter. */
+  margin-left: max(-1em, calc(-1 * var(--file-margins) + 2px));
   color: var(--text-faint); cursor: pointer; opacity: 0;
   transition: opacity var(--transition), transform var(--transition); }
 .cm-heading-fold svg { width: 0.7em; height: 0.7em; }
