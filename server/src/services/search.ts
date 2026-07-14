@@ -242,8 +242,15 @@ class QmdEngine {
     if (!needles.length) return { path: rel, count: 0, contexts: [] };
 
     let body = '';
+    // Số dòng frontmatter bị `parseNote` cắt khỏi body. `line` phải đếm theo TOÀN
+    // file (như offset của read_note) chứ không theo body, nếu không grep→read_note
+    // sẽ lệch đúng bằng độ dài frontmatter khi note có YAML đầu file.
+    let lineShift = 0;
     try {
-      body = parseNote(rel, await readFileText(rel)).body;
+      const raw = await readFileText(rel);
+      body = parseNote(rel, raw).body;
+      const idx = raw.indexOf(body);
+      lineShift = idx > 0 ? raw.slice(0, idx).split('\n').length - 1 : 0;
     } catch {
       return { path: rel, count: 0, contexts: [] };
     }
@@ -285,7 +292,7 @@ class QmdEngine {
       const text = body.slice(winStart, winEnd).replace(/[\n\r\t]/g, ' ');
       const ranges = group.map((o) => [o.start - winStart, o.len] as [number, number]);
       const firstStart = group[0].start;
-      const line = 1 + (body.slice(0, firstStart).match(/\n/g)?.length ?? 0);
+      const line = lineShift + 1 + (body.slice(0, firstStart).match(/\n/g)?.length ?? 0);
       contexts.push({ text: text.trim(), ranges: shiftRanges(text, ranges), pre: winStart > 0, post: winEnd < body.length, line });
       group = [];
     };
