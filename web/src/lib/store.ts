@@ -26,6 +26,12 @@ export interface Tab {
   title: string;
 }
 
+/** One entry in the "Opened" recent-files history: path + the timestamp it was last opened. */
+export interface RecentEntry {
+  path: string;
+  openedAt: number;
+}
+
 /** A color group in the graph (nodes matching `query` are tinted `color`). */
 export interface GraphGroup {
   query: string;
@@ -125,7 +131,7 @@ interface AppState {
   openToSide: (path: string, direction?: 'right' | 'down') => Promise<void>;
   closeSplit: () => void;
 
-  recent: string[];
+  recent: RecentEntry[];
   removeRecent: (path: string) => void;
   bookmarks: string[];
   toggleBookmark: (path: string) => void;
@@ -231,6 +237,8 @@ interface AppState {
 }
 
 const TEXT_RE = /\.(md|markdown|txt|json|csv|canvas|css|js|ya?ml)$/i;
+/** Max entries kept in the "Opened" recent-files history (raised from 20 so the 3-month range filter is meaningful). */
+const RECENT_CAP = 200;
 
 // ---- server-side workspace persistence (shared across browsers/devices) ----
 const PERSIST_KEYS = [
@@ -264,6 +272,15 @@ function migrateGraphSettings(gs: unknown): GraphSettings {
   return merged;
 }
 
+/** Legacy `recent` was `string[]`; migrate entries to `{path, openedAt}` (openedAt=0 sorts to the bottom under "All"). */
+function migrateRecent(raw: unknown): RecentEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((e) => (typeof e === 'string' ? { path: e, openedAt: 0 } : e))
+    .filter((e): e is RecentEntry => !!e && typeof e === 'object' && typeof (e as any).path === 'string' && typeof (e as any).openedAt === 'number')
+    .slice(0, RECENT_CAP);
+}
+
 function applyPersisted(s: any, set: (p: any) => void): void {
   set({
     tabs: Array.isArray(s.tabs) ? s.tabs : [],
@@ -274,7 +291,7 @@ function applyPersisted(s: any, set: (p: any) => void): void {
     autoReveal: s.autoReveal === true,
     splitPath: typeof s.splitPath === 'string' ? s.splitPath : null,
     splitDirection: s.splitDirection === 'down' ? 'down' : 'right',
-    recent: Array.isArray(s.recent) ? s.recent : [],
+    recent: migrateRecent(s.recent),
     bookmarks: Array.isArray(s.bookmarks) ? s.bookmarks : [],
     leftPanel: ['files', 'search', 'tags', 'bookmarks'].includes(s.leftPanel) ? s.leftPanel : 'files',
     rightPanel: ['backlinks', 'outgoing', 'tags', 'outline'].includes(s.rightPanel) ? s.rightPanel : 'backlinks',
@@ -388,7 +405,7 @@ export const useStore = create<AppState>()(
       closeSplit: () => set({ splitPath: null, splitContent: '' }),
 
       recent: [],
-      removeRecent: (path) => set((s) => ({ recent: s.recent.filter((p) => p !== path) })),
+      removeRecent: (path) => set((s) => ({ recent: s.recent.filter((e) => e.path !== path) })),
       movePath: null,
       setMovePath: (path) => set({ movePath: path }),
 
@@ -525,7 +542,9 @@ export const useStore = create<AppState>()(
         const title = path.split('/').pop() ?? path;
         set((s) => {
           const tabs = s.tabs.find((t) => t.path === path) ? s.tabs : [...s.tabs, { path, title }];
-          const recent = isFolder ? s.recent : [path, ...s.recent.filter((p) => p !== path)].slice(0, 20);
+          const recent = isFolder
+            ? s.recent
+            : [{ path, openedAt: Date.now() }, ...s.recent.filter((e) => e.path !== path)].slice(0, RECENT_CAP);
           return { tabs, activePath: path, content, dirty: false, recent, ...pushHistory(s, path) };
         });
       },

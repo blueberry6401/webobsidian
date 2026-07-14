@@ -1,7 +1,9 @@
 # PRD — WebObsidian
 
 > Product Requirements Document
-> Phiên bản: 1.8 · Cập nhật: 2026-07-10 · Trạng thái: Draft
+> Phiên bản: 1.9 · Cập nhật: 2026-07-14 · Trạng thái: Draft
+> Changelog 1.9 (FR-15 — Quick filter tên file File Explorer + Recent 3-mode Opened/Created/
+> Modified, theo yêu cầu người dùng): xem chi tiết ở §3 FR-15.
 > Changelog 1.8 (FR-6 — Agent API: PATCH notes hỗ trợ find/replace nguyên tử, theo yêu cầu người dùng —
 > contract đã chốt với MCP client, không đổi): `PATCH /api/v1/notes/{path}` nhận thêm body
 > `{find, replace, replaceAll?}` để **sửa nội dung nguyên tử phía server** (đọc–đếm–thay–ghi trong 1
@@ -475,6 +477,24 @@ lúc nào. Một note có thể có **nhiều bản preview** khác nhau (mỗi 
 API mới: `GET/POST /api/html-preview`, `GET/POST /api/html-preview/{id}`, `POST
 /api/html-preview/{id}/regenerate`, `PATCH/DELETE /api/html-preview/{id}`. Settings mới nhóm `llm`
 (`provider`, `anthropicApiKey`, `openaiApiKey`, `openaiModel`, `templates[]`).
+
+### FR-15 · Quick filter tên file (File Explorer) & Recent theo Added/Modified
+Mục tiêu: vault nhiều note theo thời gian khiến khó tìm note gần đây hoặc note theo tên. Hai cải
+tiến độc lập cho sidebar trái:
+
+- **Quick filter tên file** (panel File Explorer): ô nhập ở đầu cây thư mục, gõ vào lọc ngay cây
+  file — ẩn file/folder không khớp, tự mở rộng folder chứa file khớp. So khớp chuẩn hóa: chữ
+  thường, bỏ dấu tiếng Việt (kể cả đ/Đ), bỏ khoảng trắng, kiểu "chứa chuỗi con", chỉ so theo tên
+  file (không theo path). Xóa ô nhập trả cây về đúng trạng thái mở/đóng trước đó.
+- **Panel Recent 3 chế độ**: thay panel "Recent" (chỉ note vừa mở, tối đa 20) bằng 3 chế độ toggle
+  — Opened (vừa mở, nay lưu tới 200 mục kèm thời điểm mở), Created (ngày tạo file, toàn vault),
+  Modified (ngày sửa file, toàn vault). 4 nút lọc nhanh theo khoảng thời gian dùng chung cho cả 3
+  chế độ: 1 week (mặc định) / 1 month / 3 months / All. "Remove from recent" trong menu chuột phải
+  chỉ hiện ở chế độ Opened (2 chế độ kia tự suy ra từ filesystem, không xóa thủ công được).
+
+Không đổi API server — cả hai tính năng dùng dữ liệu client đã có sẵn (cây file đã trả mtime/ctime
+từ Phase 29; workspace state `recent` đổi định dạng nhưng vẫn qua cùng endpoint `/api/uistate`
+không schema hoá phía server).
 
 ---
 
