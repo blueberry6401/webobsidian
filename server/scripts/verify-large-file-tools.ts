@@ -116,6 +116,17 @@ async function e2eTests() {
     r = await req('GET', '/api/v1/note-matches?path=KhongCo.md&q=x', apiKey);
     check('note không tồn tại → 404', r.status === 404, r);
 
+    // note có frontmatter: số dòng phải tính theo TOÀN file (gồm frontmatter), khớp read_note
+    const fm = '---\ntitle: Ghi chú\ntags: [x, y]\n---\n# Tiêu đề\nnội dung mốc ở đây';
+    // "nội dung mốc" nằm ở dòng 6 của file (4 dòng frontmatter + 1 dòng tiêu đề + chính nó)
+    await req('PUT', '/api/v1/notes/FM.md', apiKey, { content: fm, base_version: '' });
+    r = await req('GET', '/api/v1/note-matches?path=FM.md&q=' + encodeURIComponent('nội dung mốc'), apiKey);
+    const fmm = r.json as { matches: { line: number }[] };
+    eq('số dòng tính theo toàn file (gồm frontmatter) = 6', fmm.matches[0]?.line, 6);
+    // Xác nhận bắc cầu: read_note offset=5 (0-based → dòng 6) trả đúng dòng đó
+    r = await req('GET', '/api/v1/notes/FM.md?offset=5&limit=1', apiKey);
+    eq('read_note offset=5 trỏ đúng dòng grep chỉ', (r.json as { content: string }).content, 'nội dung mốc ở đây');
+
     // list folder
     await req('PUT', '/api/v1/notes/Folder B/Other.md', apiKey, { content: 'x', base_version: '' });
     r = await req('GET', '/api/v1/notes?folder=Folder%20A', apiKey);
