@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-14 (hardening bảo mật — CSP sandbox cho HTML Preview `/:id/raw`)
+Cập nhật lần cuối: 2026-07-14 (Phase 32 — Quick filter tên file File Explorer + Recent 3-mode Opened/Created/Modified + filter khoảng thời gian)
 
 ---
 
@@ -503,7 +503,43 @@ Cập nhật lần cuối: 2026-07-14 (hardening bảo mật — CSP sandbox cho
       cuộn đúng, scroll-spy highlight theo cuộn, click mục cuối highlight đúng (pin), collapse+jump tự
       mở section, Editing click-to-jump chạy. Typecheck + build + `vitest` (20/20) sạch.
 
+## Phase 32 — Quick filter tên file + Recent theo Added/Modified — FR-15 (theo yêu cầu người dùng)
+- [x] M32.1 `web/src/lib/normalize.ts` — `normalizeForFilter`/`matchesQuery` (bỏ dấu tiếng Việt +
+      đ/Đ + khoảng trắng), Vitest.
+- [x] M32.2 `web/src/lib/tree.ts` — `flattenFiles` (danh sách phẳng file toàn vault kèm mtime/
+      ctime), Vitest.
+- [x] M32.3 `web/src/lib/recentList.ts` — `filterAndSortRecent` theo range (week/month/3months/
+      all), Vitest.
+- [x] M32.4 `web/src/lib/store.ts` — `recent` đổi `string[]` → `RecentEntry[]` ({path, openedAt}),
+      cap 200, migrate dữ liệu cũ.
+- [x] M32.5 `FileTree.tsx` — ô filter tên file đầu panel, ẩn/hiện + auto-expand ancestor không đụng
+      `expanded` persisted.
+- [x] M32.6 `BookmarksPanel.tsx` — Recent 3 mode (Opened/Created/Modified) + 4 nút range, menu
+      "Remove from recent" chỉ ở mode Opened.
+- [x] M32.7 Verify Playwright server thật (vault tạm, login + set-pass): filter "danang" ra đúng
+      note Đà Nẵng, ẩn note không khớp, xoá filter về bình thường; Recent mode Opened hiện note vừa
+      mở; mode Modified + range 1 week ẩn note cũ >200 ngày, range All hiện lại. Typecheck +
+      `vitest` sạch.
+
 ### Nhật ký tiến độ
+- 2026-07-14 (Phase 32 — Quick filter tên file + Recent theo Added/Modified, theo yêu cầu người
+  dùng): vault nhiều note khiến khó tìm note gần đây/theo tên. (1) File Explorer thêm ô filter tên
+  file đầu panel (`web/src/lib/normalize.ts#matchesQuery`) — chuẩn hoá bỏ dấu tiếng Việt (kể cả
+  đ/Đ) + khoảng trắng + lowercase trước khi so khớp substring, chỉ so theo filename; cây ẩn
+  file/folder không khớp, tự mở ancestor chứa match mà **không đụng** `expanded` persisted (biến
+  cục bộ `visiblePaths`, không gọi `toggleFolder` khi đang filter) nên xoá filter trả đúng trạng
+  thái mở/đóng trước đó. (2) Panel "Recent" (trước chỉ 20 note vừa mở) đổi thành 3 chế độ toggle —
+  Opened (nay lưu 200 mục kèm `openedAt`, migrate dữ liệu `string[]` cũ), Created/Modified (đọc
+  thẳng mtime/ctime đã có sẵn trong cây từ Phase 29 qua `flattenFiles`, không cần API mới) — cộng 4
+  nút lọc nhanh theo khoảng thời gian (1 week mặc định/1 month/3 months/All,
+  `recentList.ts#filterAndSortRecent`) dùng chung cho cả 3 mode. "Remove from recent" trong menu
+  chuột phải chỉ còn ở mode Opened. Verify Playwright server thật (vault tạm, login+set-pass, note
+  mtime giả lập qua `fs.utimesSync`): gõ "danang" (không dấu) ra đúng note "Đà Nẵng…", ẩn note
+  không khớp, xoá ô filter về nguyên trạng cây; mode Opened hiện note vừa mở; mode Modified + range
+  1 week ẩn note 200 ngày tuổi, range All hiện lại. Typecheck + `vitest` sạch. *Giới hạn biết
+  trước:* không kiểm định độc lập ctime khác mtime trong E2E (birthtime hệ điều hành không set tùy
+  ý qua `fs.utimes` trên hầu hết filesystem) — mode Created chỉ verify không crash + render đúng
+  cấu trúc, không verify thứ tự chính xác.
 - 2026-07-14 (hardening bảo mật — HTML Preview `/:id/raw`): automated security review (post-commit
   hook) chỉ ra lớp chặn hiện có (`Sec-Fetch-Dest`/`Sec-Fetch-Site`, xem log 2026-07-08) là fail-open
   — nếu client không gửi các header này (browser cũ, client phi trình duyệt), request lọt qua không
