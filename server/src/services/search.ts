@@ -37,6 +37,8 @@ export interface MatchContext {
   /** ellipsis flags — context is clipped from the surrounding body. */
   pre: boolean;
   post: boolean;
+  /** 1-based line number of the first occurrence in this context (for agent grep). */
+  line?: number;
 }
 
 export interface NoteMatches {
@@ -282,7 +284,9 @@ class QmdEngine {
       // length-preserving newline/tab → space so range offsets stay valid
       const text = body.slice(winStart, winEnd).replace(/[\n\r\t]/g, ' ');
       const ranges = group.map((o) => [o.start - winStart, o.len] as [number, number]);
-      contexts.push({ text: text.trim(), ranges: shiftRanges(text, ranges), pre: winStart > 0, post: winEnd < body.length });
+      const firstStart = group[0].start;
+      const line = 1 + (body.slice(0, firstStart).match(/\n/g)?.length ?? 0);
+      contexts.push({ text: text.trim(), ranges: shiftRanges(text, ranges), pre: winStart > 0, post: winEnd < body.length, line });
       group = [];
     };
 
