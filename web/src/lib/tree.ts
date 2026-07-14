@@ -28,3 +28,24 @@ export function pruneDescendants(paths: string[]): string[] {
   for (const p of sorted) if (!keep.some((k) => p === k || p.startsWith(`${k}/`))) keep.push(p);
   return keep;
 }
+
+export interface FlatFile {
+  path: string;
+  name: string;
+  mtime: number;
+  ctime: number;
+}
+
+/** Every file node in the tree (folders skipped, order not significant). */
+export function flattenFiles(root: TreeNode | null): FlatFile[] {
+  if (!root) return [];
+  const out: FlatFile[] = [];
+  const walk = (n: TreeNode) => {
+    for (const c of n.children ?? []) {
+      if (c.type === 'file') out.push({ path: c.path, name: c.name, mtime: c.mtime ?? 0, ctime: c.ctime ?? 0 });
+      else walk(c);
+    }
+  };
+  walk(root);
+  return out;
+}
