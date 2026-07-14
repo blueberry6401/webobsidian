@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-14 (fix bug — chevron collapse heading bị cắt nửa trên mobile)
+Cập nhật lần cuối: 2026-07-14 (hardening bảo mật — CSP sandbox cho HTML Preview `/:id/raw`)
 
 ---
 
@@ -504,6 +504,19 @@ Cập nhật lần cuối: 2026-07-14 (fix bug — chevron collapse heading bị
       mở section, Editing click-to-jump chạy. Typecheck + build + `vitest` (20/20) sạch.
 
 ### Nhật ký tiến độ
+- 2026-07-14 (hardening bảo mật — HTML Preview `/:id/raw`): automated security review (post-commit
+  hook) chỉ ra lớp chặn hiện có (`Sec-Fetch-Dest`/`Sec-Fetch-Site`, xem log 2026-07-08) là fail-open
+  — nếu client không gửi các header này (browser cũ, client phi trình duyệt), request lọt qua không
+  kiểm tra. **Thêm lớp phòng thủ độc lập, không phụ thuộc header:** `Content-Security-Policy: sandbox
+  allow-scripts` trên response — ép tài liệu vào "opaque origin" do trình duyệt thực thi, áp dụng bất
+  kể tài liệu được mở qua iframe hay điều hướng top-level trực tiếp (khác với thuộc tính `sandbox`
+  của thẻ `<iframe>` vốn chỉ có tác dụng khi nhúng đúng cách). Verify bằng Playwright trên server thật
+  (vault giả có preview mẫu): (1) `window.origin` bên trong iframe nhúng = `"null"` (opaque xác nhận);
+  (2) script cố `fetch()` kèm cookie về `/api/html-preview/...` của app → thất bại thẳng
+  ("Failed to fetch"), tức không thể đọc/ghi vault ngay cả khi bị nhúng đúng cách; (3) script/`onclick`
+  bình thường (không gọi API app) vẫn chạy đúng — tính năng accordion/nút bấm không bị ảnh hưởng.
+  Layer `Sec-Fetch-*` cũ giữ nguyên (vẫn chặn sớm + thân thiện hơn cho trường hợp phổ biến), CSP
+  `sandbox` là lớp chặn thật sự không phụ thuộc header. Typecheck sạch.
 - 2026-07-14 (fix bug — chevron collapse heading bị cắt nửa trên mobile): `.cm-heading-fold`
   (`web/src/styles/obsidian.css`) dùng `margin-left: -1em` cố định để kéo chevron ra trước heading.
   Vấn đề: `em` ăn theo font-size của heading (H1 = 1.618×), trong khi lề trái `.cm-content`
