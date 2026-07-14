@@ -871,6 +871,14 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .panel-item-actions > span { display: flex; padding: 2px; border-radius: var(--radius-s); color: var(--text-faint); }
 .panel-item-actions > span:hover { color: var(--text-normal); background: var(--bg-modifier-hover); }
 
+.recent-filter-row { display: flex; gap: 4px; padding: 2px 8px; flex-wrap: wrap; }
+.recent-filter-btn {
+  border: 0; background: transparent; color: var(--text-muted); cursor: pointer;
+  padding: 3px 8px; border-radius: var(--radius-s); font-size: 12px;
+}
+.recent-filter-btn:hover { background: var(--bg-modifier-hover); color: var(--text-normal); }
+.recent-filter-btn.active { color: var(--text-accent); background: var(--bg-modifier-hover); font-weight: 500; }
+
 /* Folder content view (deep-link /note/<folder>) */
 .folder-view-head { display: flex; align-items: center; gap: 10px; }
 .folder-view-head h1 { display: flex; align-items: center; gap: 10px; flex: 1; margin: 0; }
