@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore, type TreeSort } from '../lib/store';
 import { api, type TreeNode } from '../lib/api';
 import { findNode, pruneDescendants } from '../lib/tree';
+import { matchesQuery } from '../lib/normalize';
 import { pathToUrl } from '../lib/urlsync';
 import Icon from './Icon';
 
@@ -129,10 +130,13 @@ function uniqueChildName(tree: TreeNode | null, targetDir: string, base: string)
   return name;
 }
 
-function Node({ node, depth }: { node: TreeNode; depth: number }) {
+function Node({ node, depth, visiblePaths }: { node: TreeNode; depth: number; visiblePaths: Set<string> | null }) {
   const expanded = useStore((s) => s.expanded);
   const toggleFolder = useStore((s) => s.toggleFolder);
-  const open = expanded.includes(node.path); // persisted across reloads
+  // While a filter is active every rendered folder is, by construction, an ancestor of a
+  // match — force it open without touching persisted `expanded`, so clearing the filter
+  // restores the exact prior expand/collapse state.
+  const open = visiblePaths ? true : expanded.includes(node.path);
   const [dropping, setDropping] = useState(false);
   const activePath = useStore((s) => s.activePath);
   const openFile = useStore((s) => s.openFile);
@@ -161,6 +165,10 @@ function Node({ node, depth }: { node: TreeNode; depth: number }) {
   const editing = renamingPath === node.path;
   const isCut = clipboard?.mode === 'cut' && clipboard.path === node.path;
 
+  // Hide anything not in the filtered set (Node itself is only ever rendered for
+  // paths that either matched the query or are an ancestor of a match).
+  if (visiblePaths && !visiblePaths.has(node.path)) return null;
+
   // Click selection: plain = single (+open/toggle), Cmd/Ctrl = toggle one,
   // Shift = range from the anchor across the visible rows (like Obsidian/Finder).
   const onRowClick = (e: React.MouseEvent) => {
@@ -186,7 +194,7 @@ function Node({ node, depth }: { node: TreeNode; depth: number }) {
     }
     setSelected([node.path]);
     setSelectAnchor(node.path);
-    if (isFolder) toggleFolder(node.path);
+    if (isFolder) { if (!visiblePaths) toggleFolder(node.path); }
     else openFile(node.path);
   };
 
@@ -380,7 +388,7 @@ function Node({ node, depth }: { node: TreeNode; depth: number }) {
         {open && (
           <div className="tree-children">
             {(node.children ?? []).map((c) => (
-              <Node key={c.path} node={c} depth={depth + 1} />
+              <Node key={c.path} node={c} depth={depth + 1} visiblePaths={visiblePaths} />
             ))}
           </div>
         )}
@@ -467,6 +475,31 @@ export default function FileTree() {
   const rawTree = useStore((s) => s.tree);
   const treeSort = useStore((s) => s.treeSort);
   const tree = rawTree ? sortTree(rawTree, treeSort) : rawTree;
+  const [filter, setFilter] = useState('');
+  // null = no filter active (render everything, respect persisted `expanded`).
+  // Set<string> = paths to render: matched files + every ancestor folder of a match.
+  const visiblePaths = useMemo<Set<string> | null>(() => {
+    if (!filter.trim()) return null;
+    const visible = new Set<string>();
+    if (!tree) return visible;
+    const walk = (n: TreeNode): boolean => {
+      let anyMatch = false;
+      for (const c of n.children ?? []) {
+        if (c.type === 'file') {
+          if (matchesQuery(c.name, filter)) {
+            visible.add(c.path);
+            anyMatch = true;
+          }
+        } else if (walk(c)) {
+          visible.add(c.path);
+          anyMatch = true;
+        }
+      }
+      return anyMatch;
+    };
+    walk(tree);
+    return visible;
+  }, [tree, filter]);
   const loadTree = useStore((s) => s.loadTree);
   const notify = useStore((s) => s.notify);
   const closeTab = useStore((s) => s.closeTab);
@@ -577,17 +610,37 @@ export default function FileTree() {
       </div>
     );
   return (
-    <div
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={onRootDrop}
-      onContextMenu={onRootContext}
-      // Click on the empty area below the rows clears the selection.
-      onClick={(e) => { if (e.target === e.currentTarget) setSelected([]); }}
-      style={{ minHeight: '100%' }}
-    >
-      {tree.children.map((c) => (
-        <Node key={c.path} node={c} depth={0} />
-      ))}
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      <div className="search-input-wrap" style={{ margin: '6px 8px' }}>
+        <Icon name="search" size={14} className="search-lead" />
+        <input
+          className="search-input has-lead"
+          placeholder="Filter files…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+        {filter && (
+          <button className="search-icon-btn" title="Clear" onClick={() => setFilter('')}>
+            <Icon name="x" size={14} />
+          </button>
+        )}
+      </div>
+      {visiblePaths && visiblePaths.size === 0 ? (
+        <div style={{ padding: '8px 12px', color: 'var(--text-faint)' }}>No matching files.</div>
+      ) : (
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={onRootDrop}
+          onContextMenu={onRootContext}
+          // Click on the empty area below the rows clears the selection.
+          onClick={(e) => { if (e.target === e.currentTarget) setSelected([]); }}
+          style={{ minHeight: '100%', flex: 1 }}
+        >
+          {tree.children.map((c) => (
+            <Node key={c.path} node={c} depth={0} visiblePaths={visiblePaths} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -105,14 +105,18 @@ htmlPreviewRouter.get(
 // SECURITY: this document is served on the app's own origin (required so the LLM's
 // inline script can execute at all). The <iframe sandbox="allow-scripts"> (no
 // allow-same-origin) isolates it from the app's session when loaded THAT way — but
-// sandbox is an iframe-only attribute. If this URL were ever opened as a top-level
-// navigation instead (copied out of the iframe, middle-clicked, etc.), the LLM-generated
-// script would run with the logged-in user's full same-origin session — cookies are
-// httpOnly so JS can't read them directly, but the browser still attaches them to any
-// same-origin fetch(), so a malicious/compromised preview could read or overwrite the
-// whole vault via /api/*. Reject anything that isn't a same-origin iframe embed using
-// the Fetch Metadata headers modern browsers attach to every request; browsers old
-// enough to omit these headers don't send them, so the check only applies when present.
+// sandbox is an iframe-only *attribute*, so it does nothing if this URL is ever opened
+// as a top-level navigation instead (copied out of the iframe, middle-clicked, etc.).
+// Two independent layers guard against that:
+//   1. Fetch Metadata headers (Sec-Fetch-Dest/-Site) reject same-origin-but-not-iframe
+//      requests outright — but only when the client sends them (older/unusual clients
+//      may not), so this alone is fail-open, not a hard boundary.
+//   2. `Content-Security-Policy: sandbox allow-scripts` (a *response header*, unlike the
+//      iframe attribute) forces the document into a browser-enforced opaque origin no
+//      matter how it was requested — top-level nav included. An opaque origin can't send
+//      this app's cookies on same-origin fetch()/XHR and can't reach the parent frame, so
+//      even a malicious/compromised preview can't read or overwrite the vault via /api/*.
+//      This is the real boundary; layer 1 is just an early, friendlier rejection.
 htmlPreviewRouter.get(
   '/:id/raw',
   asyncHandler(async (req, res) => {
@@ -134,7 +138,7 @@ htmlPreviewRouter.get(
     }
     res.setHeader(
       'Content-Security-Policy',
-      "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src 'none'; frame-ancestors 'self'",
+      "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src 'none'; frame-ancestors 'self'",
     );
     res.type('html').send(html);
   }),

@@ -546,7 +546,12 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .cm-callout-fold.is-folded { transform: rotate(-90deg); }
 /* Collapsible headings (reading view) — chevron before the heading, hover-reveal */
 .cm-heading-fold { display: inline-flex; align-items: center; justify-content: center;
-  width: 0.9em; margin-left: -1em; margin-right: 0.1em; vertical-align: middle;
+  width: 0.9em; margin-right: 0.1em; vertical-align: middle;
+  /* H1's em is ~1.6x the base font, so a flat -1em can pull the chevron past
+     the available gutter on narrow screens (--file-margins shrinks to 14px on
+     mobile) and get clipped by .cm-content's overflow-x: hidden. Clamp to
+     whichever pull is smaller: the heading's own em, or the actual gutter. */
+  margin-left: max(-1em, calc(-1 * var(--file-margins) + 2px));
   color: var(--text-faint); cursor: pointer; opacity: 0;
   transition: opacity var(--transition), transform var(--transition); }
 .cm-heading-fold svg { width: 0.7em; height: 0.7em; }
@@ -865,6 +870,14 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .panel-item:hover .panel-item-actions { opacity: 1; }
 .panel-item-actions > span { display: flex; padding: 2px; border-radius: var(--radius-s); color: var(--text-faint); }
 .panel-item-actions > span:hover { color: var(--text-normal); background: var(--bg-modifier-hover); }
+
+.recent-filter-row { display: flex; gap: 4px; padding: 2px 8px; flex-wrap: wrap; }
+.recent-filter-btn {
+  border: 0; background: transparent; color: var(--text-muted); cursor: pointer;
+  padding: 3px 8px; border-radius: var(--radius-s); font-size: 12px;
+}
+.recent-filter-btn:hover { background: var(--bg-modifier-hover); color: var(--text-normal); }
+.recent-filter-btn.active { color: var(--text-accent); background: var(--bg-modifier-hover); font-weight: 500; }
 
 /* Folder content view (deep-link /note/<folder>) */
 .folder-view-head { display: flex; align-items: center; gap: 10px; }
