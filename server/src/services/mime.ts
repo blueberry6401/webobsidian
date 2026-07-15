@@ -22,3 +22,4 @@ export function mimeFor(p: string): string {
 
 export const VIDEO_EXT_RE = /\.(mp4|webm|ogv|mov|mkv)$/i;
 export const AUDIO_EXT_RE = /\.(mp3|wav|m4a|3gp|flac|ogg|oga|opus)$/i;
+export const IMAGE_EXT_RE = /\.(png|jpe?g|gif|svg|webp|bmp|avif|ico)$/i;
