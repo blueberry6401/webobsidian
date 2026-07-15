@@ -23,8 +23,10 @@ export interface TrashItem {
 export interface ShareRecord {
   id: string;
   path: string;
+  kind: 'file' | 'folder';
   enabled: boolean;
   createdAt: string;
+  expiresAt?: string | null;
   hasPassword?: boolean;
 }
 
@@ -236,14 +238,17 @@ export const api = {
 
   // public shares (FR-10)
   listShares: () => req<{ shares: ShareRecord[] }>('/api/shares/'),
-  createShare: (path: string) =>
-    req<{ share: ShareRecord }>('/api/shares/', { method: 'POST', body: JSON.stringify({ path }) }),
+  createShare: (path: string, kind: 'file' | 'folder' = 'file') =>
+    req<{ share: ShareRecord }>('/api/shares/', { method: 'POST', body: JSON.stringify({ path, kind }) }),
   setShareEnabled: (id: string, enabled: boolean) =>
     req<{ share: ShareRecord }>(`/api/shares/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
   deleteShare: (id: string) => req<{ ok: true }>(`/api/shares/${id}`, { method: 'DELETE' }),
   // password = null clears the share's password
   setSharePassword: (id: string, password: string | null) =>
     req<{ share: ShareRecord }>(`/api/shares/${id}`, { method: 'PATCH', body: JSON.stringify({ password }) }),
+  // expiresAt = null clears the share's expiry (never expires)
+  setShareExpiry: (id: string, expiresAt: string | null) =>
+    req<{ share: ShareRecord }>(`/api/shares/${id}`, { method: 'PATCH', body: JSON.stringify({ expiresAt }) }),
   // NOTE: the public-facing /share/<id> page is fully server-rendered (SSR) —
   // the SPA never fetches /public/shares/* itself.
 
