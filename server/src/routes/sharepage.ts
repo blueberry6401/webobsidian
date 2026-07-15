@@ -41,6 +41,41 @@ function baseUrl(req: Request): string {
   return `${req.protocol}://${req.get('host')}`;
 }
 
+/**
+ * Open Graph + Twitter card meta tags, shared by every public page — including
+ * folder listings, which are `noindex` (kept out of search results) but still
+ * need OG tags so link previews render in messaging apps (WhatsApp, Zalo,
+ * Telegram…): "don't index this" and "show a preview when shared" are
+ * unrelated concerns.
+ */
+function ogHead(opts: {
+  pageUrl: string;
+  title: string;
+  desc: string;
+  ogType?: 'article' | 'website';
+  ogImage?: string | null;
+}): string {
+  const { pageUrl, title, desc, ogType = 'website', ogImage = null } = opts;
+  return [
+    `<meta name="description" content="${escapeHtml(desc)}" />`,
+    `<link rel="canonical" href="${escapeHtml(pageUrl)}" />`,
+    `<meta property="og:type" content="${ogType}" />`,
+    `<meta property="og:site_name" content="WebObsidian" />`,
+    `<meta property="og:title" content="${escapeHtml(title)}" />`,
+    `<meta property="og:description" content="${escapeHtml(desc)}" />`,
+    `<meta property="og:url" content="${escapeHtml(pageUrl)}" />`,
+    ...(ogImage ? [
+      `<meta property="og:image" content="${escapeHtml(ogImage)}" />`,
+      `<meta name="twitter:card" content="summary_large_image" />`,
+      `<meta name="twitter:image" content="${escapeHtml(ogImage)}" />`,
+    ] : [
+      `<meta name="twitter:card" content="summary" />`,
+    ]),
+    `<meta name="twitter:title" content="${escapeHtml(title)}" />`,
+    `<meta name="twitter:description" content="${escapeHtml(desc)}" />`,
+  ].join('\n') + '\n';
+}
+
 function page(opts: {
   title: string;
   head?: string;
@@ -175,6 +210,23 @@ function toShareRel(share: ShareRecord, rel: string): string {
   return rel === share.path ? '' : rel.slice(share.path.length + 1);
 }
 
+/** OG description + image for a folder listing: item counts, first direct-child image. */
+async function folderMeta(
+  share: ShareRecord,
+  rel: string,
+  req: Request,
+): Promise<{ desc: string; ogImage: string | null }> {
+  const entries = await vault.listDir(rel);
+  const folders = entries.filter((e) => e.type === 'folder').length;
+  const files = entries.filter((e) => e.type === 'file').length;
+  const desc = `${folders} folder${folders === 1 ? '' : 's'} · ${files} file${files === 1 ? '' : 's'}`;
+  const firstImg = entries.find((e) => e.type === 'file' && IMAGE_EXT_RE.test(e.name));
+  const ogImage = firstImg
+    ? `${baseUrl(req)}/public/shares/${share.id}/file?path=${encodeURIComponent(toShareRel(share, firstImg.path))}`
+    : null;
+  return { desc, ogImage };
+}
+
 /** Read-only listing of a folder-share directory (reuses the in-app FolderView look). */
 async function folderListingBody(share: ShareRecord, rel: string): Promise<string> {
   const entries: TreeNode[] = await vault.listDir(rel);
@@ -241,12 +293,15 @@ sharePageRouter.get(
 
     if (share.kind === 'folder') {
       const title = share.path.split('/').pop() ?? share.path;
+      const pageUrl = `${baseUrl(req)}/share/${share.id}`;
+      const { desc, ogImage } = await folderMeta(share, share.path, req);
       const body = await folderListingBody(share, share.path);
       res.send(
         page({
           title,
           noindex: true,
           css,
+          head: ogHead({ pageUrl, title, desc, ogImage }),
           body: `<div class="inline-title">${escapeHtml(title)}</div>\n${body}`,
         }),
       );
@@ -269,29 +324,10 @@ sharePageRouter.get(
       ? await renderCanvasHtml(content, fileUrl)
       : await renderNoteHtml(content, fileUrl);
 
-    const head = [
-      `<meta name="description" content="${escapeHtml(desc)}" />`,
-      `<link rel="canonical" href="${escapeHtml(pageUrl)}" />`,
-      `<meta property="og:type" content="article" />`,
-      `<meta property="og:site_name" content="WebObsidian" />`,
-      `<meta property="og:title" content="${escapeHtml(title)}" />`,
-      `<meta property="og:description" content="${escapeHtml(desc)}" />`,
-      `<meta property="og:url" content="${escapeHtml(pageUrl)}" />`,
-      ...(ogImage ? [
-        `<meta property="og:image" content="${escapeHtml(ogImage)}" />`,
-        `<meta name="twitter:card" content="summary_large_image" />`,
-        `<meta name="twitter:image" content="${escapeHtml(ogImage)}" />`,
-      ] : [
-        `<meta name="twitter:card" content="summary" />`,
-      ]),
-      `<meta name="twitter:title" content="${escapeHtml(title)}" />`,
-      `<meta name="twitter:description" content="${escapeHtml(desc)}" />`,
-    ].join('\n') + '\n';
-
     res.send(
       page({
         title,
-        head,
+        head: ogHead({ pageUrl, title, desc, ogType: 'article', ogImage }),
         css,
         bare: isCv,
         body: isCv
@@ -333,11 +369,20 @@ sharePageRouter.get(
       return;
     }
 
+    const subUrl = `${baseUrl(req)}/share/${share.id}/f?path=${encodeURIComponent(toShareRel(share, rel))}`;
+
     if (await vault.isDirectory(rel)) {
       const title = rel.split('/').pop() ?? rel;
+      const { desc, ogImage } = await folderMeta(share, rel, req);
       const body = await folderListingBody(share, rel);
       res.send(
-        page({ title, noindex: true, css, body: `<div class="inline-title">${escapeHtml(title)}</div>\n${body}` }),
+        page({
+          title,
+          noindex: true,
+          css,
+          head: ogHead({ pageUrl: subUrl, title, desc, ogImage }),
+          body: `<div class="inline-title">${escapeHtml(title)}</div>\n${body}`,
+        }),
       );
       return;
     }
@@ -355,12 +400,19 @@ sharePageRouter.get(
       const fileUrl = (p: string) => `/public/shares/${share.id}/file?path=${encodeURIComponent(p)}`;
       const html = isCv ? await renderCanvasHtml(content, fileUrl) : await renderNoteHtml(content, fileUrl);
       const title = name.replace(/\.(md|markdown|canvas)$/i, '');
+      const desc = isCv ? canvasDescription(content) : metaDescription(content);
+      const imgVault = isCv ? canvasFirstImage(content) : null;
+      const img = isCv ? null : firstImage(content);
+      const ogImage = img?.url ?? (img?.vault ?? imgVault
+        ? `${baseUrl(req)}/public/shares/${share.id}/file?path=${encodeURIComponent((img?.vault ?? imgVault) as string)}`
+        : null);
       res.send(
         page({
           title,
           noindex: true,
           css,
           bare: isCv,
+          head: ogHead({ pageUrl: subUrl, title, desc, ogType: 'article', ogImage }),
           body: `${breadcrumb(share, rel)}\n${
             isCv
               ? `<div class="public-canvas-title">${escapeHtml(title)}</div>\n${html}\n${canvasViewerScript(res.locals.cspNonce)}`
@@ -372,10 +424,29 @@ sharePageRouter.get(
     }
 
     if (IMAGE_EXT_RE.test(name) || VIDEO_EXT_RE.test(name) || AUDIO_EXT_RE.test(name)) {
-      res.send(page({ title: name, noindex: true, css, body: mediaViewerBody(share, rel, name) }));
+      const ogImage = IMAGE_EXT_RE.test(name)
+        ? `${baseUrl(req)}/public/shares/${share.id}/file?path=${encodeURIComponent(toShareRel(share, rel))}`
+        : null;
+      res.send(
+        page({
+          title: name,
+          noindex: true,
+          css,
+          head: ogHead({ pageUrl: subUrl, title: name, desc: `Shared file — ${name}`, ogImage }),
+          body: mediaViewerBody(share, rel, name),
+        }),
+      );
       return;
     }
 
-    res.send(page({ title: name, noindex: true, css, body: downloadBody(share, rel, name) }));
+    res.send(
+      page({
+        title: name,
+        noindex: true,
+        css,
+        head: ogHead({ pageUrl: subUrl, title: name, desc: `Shared file — ${name}` }),
+        body: downloadBody(share, rel, name),
+      }),
+    );
   }),
 );
