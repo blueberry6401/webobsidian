@@ -151,7 +151,7 @@ async function folderListingBody(share: ShareRecord, rel: string): Promise<strin
       const href = `/share/${share.id}/f?path=${encodeURIComponent(childSub)}`;
       const label = e.type === 'file' ? e.name.replace(/\.(md|markdown)$/i, '') : `${e.name}/`;
       const thumb = e.type === 'file' && IMAGE_EXT_RE.test(e.name)
-        ? `<img class="folder-thumb" src="/public/shares/${share.id}/file?path=${encodeURIComponent(e.path)}" alt="" loading="lazy" />`
+        ? `<img class="folder-thumb" src="/public/shares/${share.id}/file?path=${encodeURIComponent(childSub)}" alt="" loading="lazy" />`
         : '';
       return `<a class="folder-entry" href="${href}">${thumb}<span class="folder-entry-name">${escapeHtml(label)}</span></a>`;
     })
@@ -304,6 +304,11 @@ sharePageRouter.get(
       res.send(
         page({ title, noindex: true, css, body: `<div class="inline-title">${escapeHtml(title)}</div>\n${body}` }),
       );
+      return;
+    }
+
+    if (!(await vault.exists(rel))) {
+      res.status(404).send(notFoundPage(css));
       return;
     }
 
