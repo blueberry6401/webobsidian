@@ -1,7 +1,16 @@
 # PRD — WebObsidian
 
 > Product Requirements Document
-> Phiên bản: 1.5 · Cập nhật: 2026-06-22 · Trạng thái: Draft
+> Phiên bản: 1.6 · Cập nhật: 2026-07-15 · Trạng thái: Draft
+> Changelog 1.6 (FR-10 — Share thư mục + Share có thời hạn, theo yêu cầu người dùng): mở rộng
+> **FR-10** — share không còn giới hạn ở 1 note/canvas mà cho phép share **cả thư mục**, trang
+> public render dạng cây file browser read-only (SSR, điều hướng bằng load trang mới qua
+> `/share/{id}/f/{subpath}`, không phải SPA); file không phải note trong cây được preview
+> (ảnh/video/audio) hoặc cho tải về giống trải nghiệm xem trong app. Thêm **share có thời hạn**:
+> `ShareRecord` có `expiresAt?` (ISO timestamp), Share dialog có 4 nút mốc dựng sẵn — 1 ngày /
+> 7 ngày / 30 ngày / Không giới hạn; hết hạn → trang "Link đã hết hạn" riêng (không lộ tên
+> file/thư mục, giống hành vi không tồn tại). `ShareRecord` thêm field `kind: 'file'|'folder'`.
+> Chi tiết thiết kế: `docs/superpowers/specs/2026-07-15-share-folder-expiry-design.md`.
 > Changelog 1.5 (FR-13 — Desktop app Electron đa nền tảng, theo yêu cầu người dùng): bổ sung **FR-13** —
 > đóng gói WebObsidian thành **app cài đặt** macOS/Windows/Linux (arm64/x64/ia32). Workspace mới `desktop/`
 > là **Electron shell** spawn đúng server Express hiện có như tiến trình con (qua `ELECTRON_RUN_AS_NODE`,
@@ -281,8 +290,15 @@ webobsidian/
   (URL-encode từng segment); Graph view = `/graph`. Mở URL trực tiếp (sau login) sẽ mở đúng
   note; back/forward của trình duyệt hoạt động (popstate ↔ history stack của app).
 - **Public share (readonly, không cần login)**:
-  - Tạo share link cho một note `.md` **hoặc canvas `.canvas`** → token ngẫu nhiên (16 bytes, base64url),
-    URL dạng `/share/<token>`.
+  - Tạo share link cho một note `.md` **hoặc canvas `.canvas`** — hoặc **cả một thư mục** —
+    → token ngẫu nhiên (16 bytes, base64url), URL dạng `/share/<token>`. `ShareRecord.kind`
+    (`'file' | 'folder'`) phân biệt hai trường hợp.
+  - **Share thư mục**: `GET /share/{id}` render trang cây thư mục read-only (folder trước, file
+    sau, sắp xếp alphabet). Điều hướng vào thư mục con/note/file bằng route
+    `GET /share/{id}/f/{subpath}` — **SSR từng trang**, load lại trang khi chuyển mục (giữ đúng
+    triết lý "không cần JS để đọc" của share, không biến thành SPA). Note/canvas trong cây render
+    y hệt pipeline share 1 file; ảnh/video/audio preview trực tiếp; các file khác hiện nút tải về.
+    Toàn bộ resolve path đi qua cơ chế chống path-traversal đã dùng cho file nhúng hiện tại.
   - **Canvas share**: `.canvas` được server render thành **HTML tĩnh** (snapshot): node đặt tuyệt đối theo
     toạ độ, edges vẽ SSR bằng SVG Bézier (cùng hình học với editor), text/embedded-note render qua pipeline
     markdown; trang full-width (bỏ cột markdown hẹp). Allowlist file public lấy từ ảnh trong file-node canvas
@@ -299,9 +315,17 @@ webobsidian/
     dùng cùng pipeline unified/remark/rehype + sanitize (port từ web, kèm CSS inline từ bundle).
   - File nhúng (ảnh/pdf/video) trong note được serve qua endpoint public **giới hạn đúng các
     file mà note đó nhúng** (`![[...]]` / `![](...)`) — không cho đọc tuỳ ý vault. Không serve
-    file `.md` qua endpoint này (không transclusion ở trang public).
-  - Share record: `{ id, path, enabled, createdAt, passwordHash? }` lưu ở `data/shares.json`
-    (JSON, atomic write). Mỗi note tối đa 1 share record (tạo lại → trả record cũ + enable).
+    file `.md` qua endpoint này (không transclusion ở trang public). Với share **thư mục**,
+    allowlist mở rộng thành mọi file resolve được bên trong phạm vi thư mục đã share (vẫn qua
+    cùng cơ chế chống traversal) — vì cả thư mục đã được chủ động chia sẻ.
+  - Share record: `{ id, path, kind, enabled, createdAt, expiresAt?, passwordHash? }` lưu ở
+    `data/shares.json` (JSON, atomic write). Mỗi path (note/canvas/thư mục) tối đa 1 share
+    record (tạo lại → trả record cũ + enable).
+  - **Thời hạn (expiry)**: `expiresAt?` (ISO timestamp, optional). Share dialog có 4 nút mốc
+    dựng sẵn — **1 ngày / 7 ngày / 30 ngày / Không giới hạn** — tính thời điểm hết hạn tuyệt đối
+    từ lúc bấm, sửa lại được bất cứ lúc nào. Share đã hết hạn được coi tương đương "không tồn
+    tại" về mặt không lộ thông tin, nhưng trang public hiển thị riêng thông báo **"Link đã hết
+    hạn"** (khác 404 chung, để người xem hiểu lý do) — không kèm tên file/thư mục.
   - Disable (giữ token, có thể bật lại) hoặc xoá hẳn. Token bị disable/xoá → trang public trả 404.
   - **Password tuỳ chọn cho từng share**: đặt/xoá ở trang quản lý (hash scrypt, không bao giờ trả
     hash về client — chỉ `hasPassword`). Khi share có password: endpoint public trả 401
@@ -309,12 +333,13 @@ webobsidian/
     (ký bằng `jwtSecret`, TTL 12h, payload gắn share id) đặt trong httpOnly cookie scope đúng
     `/public/shares/{id}` — ảnh nhúng tự gửi cookie. Đổi/xoá password không vô hiệu cookie đã cấp
     (TTL ngắn chấp nhận được cho v1).
-- **Share dialog per-note**: menu "Share…" (context menu file tree + menu ⋯ của pane, cho note `.md`
-  **và canvas `.canvas`**) mở popup cài đặt share của note đó: tạo public link, ô URL + nút Copy, toggle
-  bật/tắt link, đặt/đổi/xoá password, xoá link vĩnh viễn.
-- **Badge nhận biết**: note đang share public (enabled) hiện **icon globe** màu accent cạnh tên
-  trong file tree. Danh sách share cache trong store, load sau login và refresh sau mỗi thao tác
-  (dialog lẫn Settings dùng chung) nên badge luôn đúng.
+- **Share dialog**: menu "Share…" (context menu file tree + menu ⋯ của pane, cho note `.md`,
+  canvas `.canvas`, **và thư mục**) mở popup cài đặt share của mục đó: tạo public link, ô URL +
+  nút Copy, toggle bật/tắt link, đặt/đổi/xoá password, 4 nút mốc thời hạn dựng sẵn (hiển thị hạn
+  hiện tại hoặc "Không giới hạn"), xoá link vĩnh viễn.
+- **Badge nhận biết**: note/thư mục đang share public (enabled) hiện **icon globe** màu accent
+  cạnh tên trong file tree. Danh sách share cache trong store, load sau login và refresh sau mỗi
+  thao tác (dialog lẫn Settings dùng chung) nên badge luôn đúng.
 - **Quản lý tập trung**: Settings → tab "Sharing" liệt kê toàn bộ note đã share, có ô search
   lọc theo path, toggle enable/disable nhanh, copy link, xoá.
 
@@ -455,19 +480,23 @@ GET/PUT /api/settings
 GET/POST/DELETE /api/keys     # quản lý API key
 GET    /api/plugins | POST /api/plugins/install | PATCH enable
 GET    /api/shares            # list share (quản lý)
-POST   /api/shares            # tạo share cho 1 note {path} → {id,...}
-PATCH  /api/shares/{id}       # enable/disable {enabled}
+POST   /api/shares            # tạo share {path, kind: 'file'|'folder'} → {id,...}
+PATCH  /api/shares/{id}       # enable/disable {enabled}, đổi password, hoặc {expiresAt}
 DELETE /api/shares/{id}       # xoá share
 ```
 
 ### Public share (không auth) — `/public` & `/share`
 ```
-GET    /public/shares/{id}        # nội dung note đã share {title, content} (404 nếu disabled,
-                                  # 401 {passwordRequired} nếu có password & chưa unlock)
+GET    /public/shares/{id}        # nội dung note đã share {title, content} (404 nếu disabled/
+                                  # hết hạn, 401 {passwordRequired} nếu có password & chưa unlock)
 POST   /public/shares/{id}/unlock # {password} → set httpOnly cookie unlock (JWT 12h)
-GET    /public/shares/{id}/file?path=  # file nhúng trong note (chỉ file note đó tham chiếu)
+GET    /public/shares/{id}/file?path=  # file nhị phân — share file: chỉ file note đó tham chiếu;
+                                  # share folder: mọi file trong phạm vi thư mục đã share
 GET    /share/{id}                # trang HTML public — SERVER-RENDERED (SEO meta + OG + nội dung
-                                  # note trong HTML; locked → form password noindex)
+                                  # note/cây thư mục gốc trong HTML; locked → form password
+                                  # noindex; hết hạn → trang "Link đã hết hạn" noindex)
+GET    /share/{id}/f/{subpath}    # (chỉ kind=folder) SSR trang con: thư mục/note/file bên trong
+                                  # thư mục đã share, điều hướng bằng load trang mới
 ```
 
 ### Agent API (API-key auth) — `/api/v1`
@@ -509,9 +538,13 @@ GET    /api/v1/tags
 ### `data/shares.json` (public share links — FR-10)
 ```jsonc
 [
-  { "id": "base64url-16-bytes", "path": "Folder/Note.md",
+  { "id": "base64url-16-bytes", "path": "Folder/Note.md", "kind": "file",
     "enabled": true, "createdAt": "2026-06-10T00:00:00.000Z",
-    "passwordHash": "scrypt$...salt...$...hash..." } // optional — share không password thì bỏ field
+    "expiresAt": null, // hoặc ISO timestamp; optional, record cũ không có field = không giới hạn
+    "passwordHash": "scrypt$...salt...$...hash..." }, // optional — share không password thì bỏ field
+  { "id": "base64url-16-bytes-2", "path": "Folder/Subfolder", "kind": "folder",
+    "enabled": true, "createdAt": "2026-07-15T00:00:00.000Z",
+    "expiresAt": "2026-08-14T00:00:00.000Z" }
 ]
 ```
 
