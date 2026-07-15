@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-15 (Phase 33 — fix giao diện trang folder share theo phản hồi người dùng: thêm icon + khung, đã deploy prod)
+Cập nhật lần cuối: 2026-07-15 (Phase 33 — fix thiếu Open Graph meta tag ở trang folder share theo phản hồi người dùng, đã deploy prod)
 
 ---
 
@@ -554,6 +554,19 @@ Cập nhật lần cuối: 2026-07-15 (Phase 33 — fix giao diện trang folder
 - [x] M33.7 Deploy prod (droplet `obsidian.henry-group.uk`), verify sau deploy.
 
 ### Nhật ký tiến độ
+- 2026-07-15 (Phase 33 — fix thiếu Open Graph meta cho trang folder share, theo phản hồi người dùng
+  sau khi share link qua WhatsApp không hiện preview): trang folder share chỉ đặt `noindex` (chặn
+  index Google) nhưng không có bất kỳ `og:title`/`og:description`/`og:image` nào — nhầm lẫn giữa hai
+  khái niệm độc lập: "không cho search engine index" và "có preview khi dán link vào app nhắn tin".
+  Trang note/canvas đơn (file-kind) vẫn luôn có OG đầy đủ nên không bị ảnh hưởng; chỉ folder-kind
+  (root + mọi trang con `/f`) là thiếu. Sửa: trích `ogHead()` dùng chung (note-kind refactor sang gọi
+  hàm này, không đổi output) và `folderMeta()` (đếm số folder/file trực tiếp + tìm ảnh con đầu tiên
+  làm `og:image`) — áp dụng cho folder gốc, folder con lồng nhau, note/canvas trong folder (dùng lại
+  `metaDescription`/`canvasDescription`/`firstImage` sẵn có), và trang xem ảnh/media/tải file (dùng
+  chính file đó làm `og:image` nếu là ảnh). Verify: build production thật (`node dist/index.js`),
+  tạo folder share thật có note + ảnh, `curl` xác nhận `og:title`/`og:description`/`og:image` đúng ở
+  cả trang gốc lẫn trang note lồng bên trong, `og:image` fetch 200 đúng ảnh, `noindex` vẫn giữ nguyên
+  (không hồi quy SEO). 11/11 Vitest + typecheck sạch.
 - 2026-07-15 (Phase 33 — fix giao diện trang folder share, theo phản hồi người dùng sau khi tự tay
   mở link share thật trên prod): trang liệt kê thư mục public thiếu icon phân biệt folder/note/file
   và không có khung/viền — nhìn "trống trải" so với trải nghiệm trong app. Thêm hàm `svgIcon`/
