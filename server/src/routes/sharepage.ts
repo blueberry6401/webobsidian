@@ -140,6 +140,17 @@ function breadcrumb(share: ShareRecord, rel: string): string {
   return `<div class="public-breadcrumb">${parts.join(' <span class="public-breadcrumb-sep">/</span> ')}</div>`;
 }
 
+/**
+ * Convert a full vault-relative path (as returned by resolveInShareFolder /
+ * vault.listDir) to a share-root-relative subpath, e.g. `E2E-Share/Sub/x.png`
+ * -> `Sub/x.png` for a share rooted at `E2E-Share`. This is what
+ * GET /public/shares/:id/file and GET /share/:id/f both expect as `?path=`
+ * (share-relative), NOT the full vault path.
+ */
+function toShareRel(share: ShareRecord, rel: string): string {
+  return rel === share.path ? '' : rel.slice(share.path.length + 1);
+}
+
 /** Read-only listing of a folder-share directory (reuses the in-app FolderView look). */
 async function folderListingBody(share: ShareRecord, rel: string): Promise<string> {
   const entries: TreeNode[] = await vault.listDir(rel);
@@ -147,7 +158,7 @@ async function folderListingBody(share: ShareRecord, rel: string): Promise<strin
   if (entries.length === 0) return `${crumb}<p class="folder-empty">This folder is empty.</p>`;
   const rows = entries
     .map((e) => {
-      const childSub = e.path.slice(share.path.length + 1);
+      const childSub = toShareRel(share, e.path);
       const href = `/share/${share.id}/f?path=${encodeURIComponent(childSub)}`;
       const label = e.type === 'file' ? e.name.replace(/\.(md|markdown)$/i, '') : `${e.name}/`;
       const thumb = e.type === 'file' && IMAGE_EXT_RE.test(e.name)
@@ -160,7 +171,7 @@ async function folderListingBody(share: ShareRecord, rel: string): Promise<strin
 }
 
 function mediaViewerBody(share: ShareRecord, rel: string, name: string): string {
-  const url = `/public/shares/${share.id}/file?path=${encodeURIComponent(rel)}`;
+  const url = `/public/shares/${share.id}/file?path=${encodeURIComponent(toShareRel(share, rel))}`;
   const tag = IMAGE_EXT_RE.test(name)
     ? `<img class="public-file-media" src="${url}" alt="${escapeHtml(name)}" />`
     : VIDEO_EXT_RE.test(name)
@@ -170,7 +181,7 @@ function mediaViewerBody(share: ShareRecord, rel: string, name: string): string 
 }
 
 function downloadBody(share: ShareRecord, rel: string, name: string): string {
-  const url = `/public/shares/${share.id}/file?path=${encodeURIComponent(rel)}`;
+  const url = `/public/shares/${share.id}/file?path=${encodeURIComponent(toShareRel(share, rel))}`;
   return `${breadcrumb(share, rel)}<div class="public-file-download"><p>${escapeHtml(name)}</p><a class="btn" href="${url}" download>Download</a></div>`;
 }
 
