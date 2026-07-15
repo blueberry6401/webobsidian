@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-15 (Phase 33 — fix thiếu Open Graph meta tag ở trang folder share theo phản hồi người dùng, đã deploy prod)
+Cập nhật lần cuối: 2026-07-15 (Phase 33 — thêm sidebar cây thư mục cố định cho trang folder share theo phản hồi người dùng, đã deploy prod)
 
 ---
 
@@ -554,6 +554,20 @@ Cập nhật lần cuối: 2026-07-15 (Phase 33 — fix thiếu Open Graph meta 
 - [x] M33.7 Deploy prod (droplet `obsidian.henry-group.uk`), verify sau deploy.
 
 ### Nhật ký tiến độ
+- 2026-07-15 (Phase 33 — thêm sidebar cây thư mục cố định cho trang folder share, theo phản hồi
+  người dùng sau khi tự tay dùng thử link share thật): mở note trong folder share trước đó chỉ có
+  breadcrumb, phải bấm ngược lại trang liệt kê mỗi lần muốn xem file khác — bất tiện. Thêm cột
+  sidebar bên trái cố định trên MỌI trang trong 1 folder share (gốc, thư mục con, note/canvas, xem
+  media, tải file): `buildFolderTree()` duyệt đệ quy toàn bộ thư mục đã share (dùng lại
+  `vault.listDir` từng cấp, không đụng `vault.ts`), `renderTreeNav()` render thành `<details>/
+  <summary>` lồng nhau — hoàn toàn HTML thuần, không cần JS, giữ đúng triết lý "không cần JS để đọc"
+  của cả tính năng share. Thư mục nằm trên đường dẫn tới mục đang xem tự mở sẵn, mục đang xem được
+  tô sáng. Canvas giữ nguyên layout full-width cũ (không có sidebar, cần không gian ngang). CSS mới
+  responsive (`@media max-width:768px` xếp sidebar lên trên, giới hạn chiều cao) tái dùng
+  `--sidebar-width` và tông màu hover/active y hệt file tree trong app thật. Verify: build production
+  thật, tạo folder share có subfolder + nhiều note, `curl` xác nhận cây hiện đúng, thư mục cha tự mở,
+  mục đang xem có class `is-current` đúng 1 lần, mở lại đúng link "Dam Cuoi" thật của người dùng trên
+  prod sau deploy xác nhận sidebar xuất hiện. 11/11 Vitest + typecheck sạch.
 - 2026-07-15 (Phase 33 — fix thiếu Open Graph meta cho trang folder share, theo phản hồi người dùng
   sau khi share link qua WhatsApp không hiện preview): trang folder share chỉ đặt `noindex` (chặn
   index Google) nhưng không có bất kỳ `og:title`/`og:description`/`og:image` nào — nhầm lẫn giữa hai
