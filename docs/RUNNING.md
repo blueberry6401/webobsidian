@@ -88,22 +88,26 @@ docker compose up -d --build
 - Set `WEBOBSIDIAN_PASSWORD` in `.env` to skip the first-run unlock UI.
 - Healthcheck hits `GET /healthz`.
 
-## Planned: standalone deployment checkout at `../_deployment`
+## Production deployment
 
-Decision (this session): dev work happens in **ephemeral, harness-managed
-git worktrees** under `.claude/worktrees/<session-id>/` — those branches are
-deleted when a session closes. For an actual long-running / production
-instance, use a **plain, non-worktree clone** of the fork, kept at
-`/Users/henry/Documents/Projects/_deployment` (a sibling of this
-`webobsidian/` directory — NOT nested inside `.claude/worktrees/`).
+Production runs on a **remote DigitalOcean droplet** (`159.65.128.188`,
+`obsidian.henry-group.uk`), NOT on this machine. The droplet has a plain clone
+at `/opt/webobsidian` (remote `origin` = the fork) running behind Caddy via
+Docker. Redeploy:
 
-That directory does not exist yet. See the companion kickoff prompt
-(handed to the user in the same turn this file was written) for the
-concrete migration steps — clone `fork`, point its own `origin` at the fork
-(not upstream), keep upstream reachable as a second remote for pulling
-future updates, install deps, and get `npm run build && npm run start` (or
-`docker compose up`) verified green there before treating it as the real
-deployment.
+```bash
+ssh root@159.65.128.188 'cd /opt/webobsidian && git pull && docker compose up -d --build'
+```
+
+The build runs on the 2GB droplet and can take several minutes — when running
+it over SSH from a tool with a command timeout, give it a long timeout or run
+it detached, otherwise the SSH session gets killed mid-build (looks like exit
+137 but the droplet keeps building).
+
+Deploy docs (per service, with infra details) live at
+`/Users/henry/Documents/Projects/_deployments/` — `webobsidian-web.md` (this
+server) and `webobsidian-mcp.md` (the Cloudflare Worker). Read the relevant one
+before deploying.
 
 ## Known gotchas hit this session
 
