@@ -72,7 +72,7 @@ export interface ShareRecord {
   (breadcrumb chỉ có tên thư mục gốc, danh sách entry con: thư mục trước, file sau, sắp xếp
   alphabet).
 
-**Route mới `GET /share/:id/f/*subpath`** (chỉ áp dụng khi `kind === 'folder'`):
+**Route mới `GET /share/:id/f?path=`** (chỉ áp dụng khi `kind === 'folder'`):
 - Guard hết hạn/not-found giống route gốc.
 - Resolve `subpath` tương đối so với `record.path` bằng cơ chế chống path-traversal đã có
   (`vault.resolveInVault`, cùng cơ chế đang chặn `../` và symlink cho file nhúng hiện tại) —
@@ -95,7 +95,7 @@ export interface ShareRecord {
   `record.path`" (vẫn qua `resolveInVault` để chặn traversal) — vì cả thư mục đã được chủ động
   chia sẻ, không cần giới hạn theo embed target như trường hợp 1 note.
 - Vẫn không serve `.md`/`.markdown`/`.canvas` qua endpoint này (những file đó render qua route
-  `/f/*subpath` ở trên, không phải qua endpoint file nhị phân).
+  `/f?path=` ở trên, không phải qua endpoint file nhị phân).
 
 ## API quản lý (`POST/PATCH /api/shares`, cần auth)
 
@@ -126,7 +126,7 @@ export interface ShareRecord {
 - Trang "hết hạn" và trang "không tồn tại" phải giống hệt nhau về việc **không lộ** tên
   file/thư mục — chỉ khác nội dung thông báo hiển thị cho người dùng.
 - Cookie unlock (JWT, `isUnlocked()`) tái dùng nguyên trạng — không đổi cơ chế ký/verify hiện có,
-  chỉ áp dụng check này ở nhiều route hơn (route `/f/*subpath` mới).
+  chỉ áp dụng check này ở nhiều route hơn (route `/f?path=` mới).
 - Không log nội dung path thư mục/note nhạy cảm ra console theo đúng quy ước bảo mật của project
   (CLAUDE.md: không log secret/token, nhưng path thư mục thông thường không phải secret — vẫn
   tránh log dư thừa không cần thiết).
@@ -136,7 +136,7 @@ export interface ShareRecord {
 - Unit (Vitest, `server/`): `getShareStatus()` với các case active/expired/not_found/disabled;
   `createShare` với `kind: 'folder'`; allowlist file-serving cho folder-kind không cho traversal
   ra ngoài `record.path`.
-- Integration: tạo folder share qua API, gọi `GET /share/:id` và `GET /share/:id/f/<subpath>`
+- Integration: tạo folder share qua API, gọi `GET /share/:id` và `GET /share/:id/f?path=<subpath>`
   không auth, xác nhận cây hiển thị đúng, file nhị phân bên trong serve được, note con render
   đúng nội dung; thử `subpath` chứa `../` bị chặn.
 - E2E thủ công (bắt buộc theo quy ước cá nhân): chạy `npm run dev`, tạo 1 folder share thật qua
