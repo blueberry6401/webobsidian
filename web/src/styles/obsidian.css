@@ -1077,7 +1077,15 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 
 /* Persistent folder-tree sidebar (root + every /f sub-page) so visitors can
    jump between files without bouncing back to the listing each time. */
-.public-folder-layout { display: flex; width: 100%; min-height: 100vh; align-items: flex-start; }
+/* min-width: 0 — without it this flex item's automatic minimum size is its
+   content's min-content width (CSS Flexbox §4.5), so one long unbreakable
+   run of text (a raw URL, a long filename) inside the note column forces
+   the whole layout wider than the viewport, and mobile Safari responds by
+   zooming the ENTIRE page out to fit — every bit of text looks tiny, not
+   just the offending line. The single-note share page never hit this: its
+   `.markdown-preview` (overflow-y: auto) is the direct flex item there, and
+   auto/hidden overflow already zeroes the automatic minimum per spec. */
+.public-folder-layout { display: flex; width: 100%; min-height: 100vh; align-items: flex-start; min-width: 0; }
 .public-folder-nav { width: var(--sidebar-width); flex-shrink: 0; border-right: 1px solid var(--bg-modifier-border);
   padding: 16px 8px; box-sizing: border-box; position: sticky; top: 0; max-height: 100vh; overflow-y: auto; }
 .public-folder-main { flex: 1; min-width: 0; padding: 0 24px; }
@@ -1211,17 +1219,26 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
   /* Long words wrap; genuinely wide blocks (code, tables, images) are capped or
      scroll inside themselves, so the page itself never pans horizontally. */
   .app.mobile .cm-host,
-  .app.mobile .markdown-preview { overflow-x: hidden; max-width: 100vw; }
+  .app.mobile .markdown-preview,
+  .public-page .markdown-preview { overflow-x: hidden; max-width: 100vw; }
   .app.mobile .cm-content,
   .app.mobile .markdown-preview .preview-inner,
   .app.mobile .markdown-preview p,
   .app.mobile .markdown-preview li,
   .app.mobile .markdown-preview h1,
-  .app.mobile .markdown-preview .inline-title { overflow-wrap: anywhere; }
+  .app.mobile .markdown-preview .inline-title,
+  .public-page .markdown-preview .preview-inner,
+  .public-page .markdown-preview p,
+  .public-page .markdown-preview li,
+  .public-page .markdown-preview h1,
+  .public-page .markdown-preview .inline-title { overflow-wrap: anywhere; }
   .app.mobile .markdown-preview img,
   .app.mobile .markdown-preview pre,
-  .app.mobile .cm-content img { max-width: 100%; }
-  .app.mobile .markdown-preview table { display: block; overflow-x: auto; max-width: 100%; }
+  .app.mobile .cm-content img,
+  .public-page .markdown-preview img,
+  .public-page .markdown-preview pre { max-width: 100%; }
+  .app.mobile .markdown-preview table,
+  .public-page .markdown-preview table { display: block; overflow-x: auto; max-width: 100%; }
   .app.mobile .prop-key { min-width: 92px; }
   .app.mobile .properties .prop-row,
   .app.mobile .cm-properties .prop-row { flex-wrap: wrap; }
