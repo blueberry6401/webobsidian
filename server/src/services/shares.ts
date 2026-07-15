@@ -6,9 +6,12 @@ import { config } from '../config.js';
 /** Public share links (FR-10) — persisted as a JSON array in data/shares.json. */
 export interface ShareRecord {
   id: string;
-  path: string; // vault-relative note path
+  path: string; // vault-relative note or folder path
+  kind: 'file' | 'folder';
   enabled: boolean;
   createdAt: string;
+  /** ISO timestamp; unset/null = never expires. */
+  expiresAt?: string | null;
   /** Optional scrypt hash — set when the share is password-protected. */
   passwordHash?: string;
 }
@@ -17,16 +20,31 @@ const SHARES_FILE = path.join(config.dataDir, 'shares.json');
 
 let cache: ShareRecord[] | null = null;
 
+/** Validate a raw JSON entry and default `kind` for records written before it existed. */
+export function normalizeShareRecord(raw: unknown): ShareRecord | null {
+  const r = raw as Partial<ShareRecord> | null;
+  if (!r || typeof r.id !== 'string' || typeof r.path !== 'string') return null;
+  return { ...r, kind: r.kind === 'folder' ? 'folder' : 'file' } as ShareRecord;
+}
+
+/** True when `expiresAt` is set and in the past. */
+export function isExpired(expiresAt: string | null | undefined, now: number = Date.now()): boolean {
+  if (!expiresAt) return false;
+  return now > new Date(expiresAt).getTime();
+}
+
+/** True when `rel` is the shared folder itself, or lives inside it. */
+export function withinShareFolder(sharePath: string, rel: string): boolean {
+  return rel === sharePath || rel.startsWith(`${sharePath}/`);
+}
+
 async function load(): Promise<ShareRecord[]> {
   if (cache) return cache;
   try {
     const raw = await fs.readFile(SHARES_FILE, 'utf8');
     const parsed = JSON.parse(raw);
     cache = Array.isArray(parsed)
-      ? parsed.filter(
-          (r): r is ShareRecord =>
-            r && typeof r.id === 'string' && typeof r.path === 'string',
-        )
+      ? parsed.map(normalizeShareRecord).filter((r): r is ShareRecord => r !== null)
       : [];
   } catch {
     cache = [];
@@ -46,19 +64,27 @@ export async function listShares(): Promise<ShareRecord[]> {
   return [...(await load())];
 }
 
-/** Look up an ENABLED share by token (used by the public route). */
-export async function getActiveShare(id: string): Promise<ShareRecord | null> {
+export type ShareStatus =
+  | { status: 'active'; record: ShareRecord }
+  | { status: 'expired' }
+  | { status: 'not_found' };
+
+/** Central lookup for every public/SSR route: active, expired, or not found (disabled ≡ not found). */
+export async function getShareStatus(id: string): Promise<ShareStatus> {
   const shares = await load();
-  return shares.find((s) => s.id === id && s.enabled) ?? null;
+  const rec = shares.find((s) => s.id === id);
+  if (!rec || !rec.enabled) return { status: 'not_found' };
+  if (isExpired(rec.expiresAt)) return { status: 'expired' };
+  return { status: 'active', record: rec };
 }
 
 /**
- * Create a share for a note. One record per note: if the note already has a
- * share, re-enable and return it (keeps the existing public URL stable).
+ * Create a share for a note or folder. One record per (path, kind): if it
+ * already has a share, re-enable and return it (keeps the public URL stable).
  */
-export async function createShare(relPath: string): Promise<ShareRecord> {
+export async function createShare(relPath: string, kind: 'file' | 'folder' = 'file'): Promise<ShareRecord> {
   const shares = await load();
-  const existing = shares.find((s) => s.path === relPath);
+  const existing = shares.find((s) => s.path === relPath && s.kind === kind);
   if (existing) {
     if (!existing.enabled) {
       existing.enabled = true;
@@ -69,6 +95,7 @@ export async function createShare(relPath: string): Promise<ShareRecord> {
   const record: ShareRecord = {
     id: randomBytes(16).toString('base64url'),
     path: relPath,
+    kind,
     enabled: true,
     createdAt: new Date().toISOString(),
   };
@@ -99,6 +126,17 @@ export async function setSharePassword(id: string, passwordHash: string | null):
   return rec;
 }
 
+/** Set (ISO timestamp) or clear (null) the expiry of a share. */
+export async function setShareExpiry(id: string, expiresAt: string | null): Promise<ShareRecord | null> {
+  const shares = await load();
+  const rec = shares.find((s) => s.id === id);
+  if (!rec) return null;
+  if (expiresAt) rec.expiresAt = expiresAt;
+  else delete rec.expiresAt;
+  await persist(shares);
+  return rec;
+}
+
 export async function deleteShare(id: string): Promise<boolean> {
   const shares = await load();
   const next = shares.filter((s) => s.id !== id);
@@ -108,7 +146,7 @@ export async function deleteShare(id: string): Promise<boolean> {
   return true;
 }
 
-/** Keep share paths in sync when notes are renamed/deleted elsewhere. */
+/** Keep share paths in sync when notes/folders are renamed/deleted elsewhere. */
 export async function onFileRenamed(from: string, to: string): Promise<void> {
   const shares = await load();
   const rec = shares.find((s) => s.path === from);
