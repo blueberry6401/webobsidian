@@ -1066,6 +1066,15 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .public-breadcrumb span:not(.public-breadcrumb-sep) { color: var(--text-normal); }
 .public-breadcrumb-sep { color: var(--text-faint); }
 
+/* Public folder-share listing gets a card treatment (dividers, hover, rounded
+   border) — the in-app FolderView reuses the same .folder-list/.folder-entry
+   classes but stays chrome-free since it already lives inside the app shell. */
+.public-page .folder-list { border: 1px solid var(--bg-modifier-border); border-radius: var(--radius-m); overflow: hidden; gap: 0; }
+.public-page .folder-entry { padding: 10px 14px; border-bottom: 1px solid var(--bg-modifier-border); }
+.public-page .folder-entry:last-child { border-bottom: none; }
+.public-page .folder-entry-name { font-size: 14px; }
+.public-page .folder-empty { padding: 24px; text-align: center; border: 1px solid var(--bg-modifier-border); border-radius: var(--radius-m); }
+
 .public-file-view { display: flex; justify-content: center; padding: 20px 0; }
 .public-file-media { max-width: 100%; border-radius: var(--radius-s); }
 .public-file-download { text-align: center; padding: 40px 0; color: var(--text-normal); }
