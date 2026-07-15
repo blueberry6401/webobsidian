@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-15 (Phase 33 — Share thư mục + Share có thời hạn: xong, đã fix xong đợt review whole-branch cuối cùng, sẵn sàng merge/deploy)
+Cập nhật lần cuối: 2026-07-15 (Phase 33 — Share thư mục + Share có thời hạn: xong, đã merge vào main + deploy prod, verify healthz/commit/log sạch)
 
 ---
 
@@ -551,7 +551,7 @@ Cập nhật lần cuối: 2026-07-15 (Phase 33 — Share thư mục + Share có
       share có subfolder + `.canvas`, `curl ?path=<subfolder>` trả 404 nhanh (không treo),
       `curl ?path=<file>.canvas` trả 404 (không lộ JSON thô); trang SSR `/f` (root + subfolder) vẫn
       hoạt động đúng sau khi đổi `resolveInShareFolder` sang realpath.
-- [ ] M33.7 Deploy prod (droplet `obsidian.henry-group.uk`), verify sau deploy.
+- [x] M33.7 Deploy prod (droplet `obsidian.henry-group.uk`), verify sau deploy.
 
 ### Nhật ký tiến độ
 - 2026-07-15 (Phase 33 M33.8 — fix 6 phát hiện whole-branch review trước merge/deploy): quan trọng
@@ -567,6 +567,32 @@ Cập nhật lần cuối: 2026-07-15 (Phase 33 — Share thư mục + Share có
   server thật với vault fixture có subfolder + `.canvas` — `curl ?path=<subfolder>` trả 404 nhanh
   (trước đây sẽ treo), `curl ?path=<file>.canvas` trả 404 thay vì JSON thô, trang SSR `/f` vẫn hoạt
   động bình thường sau khi đổi sang realpath.
+- 2026-07-15 (Phase 33 — 2 vòng review whole-branch tiếp theo, trước khi merge): vòng 2 phát hiện
+  trang xem media/nút tải file trong folder share bị 404 — `mediaViewerBody`/`downloadBody`
+  (`sharepage.ts`) truyền path đầy đủ (vault-relative) thay vì path tương đối theo gốc share cho
+  endpoint `/file`, bị nhân đôi tiền tố khi resolve; đồng thời ảnh nhúng bằng basename trần
+  (`![[pic.png]]`) trong note nằm ở subfolder cũng lỗi tương tự vì endpoint folder-kind chỉ thử
+  resolve theo path tương đối gốc share, không có fallback tra cứu toàn vault như file-kind đã có.
+  Sửa: trích hàm `toShareRel` dùng chung cho breadcrumb/thumbnail/media/download; endpoint `/file`
+  (kind=folder) thử `resolveInShareFolder` trước, fallback sang `resolveVaultPath` (tra toàn vault,
+  giống file-kind) nếu không có, nhưng bắt buộc qua `withinShareFolder` trước khi serve để chặn rò
+  rỉ file trùng tên nằm ngoài thư mục share. Verify trực tiếp trên dev server thật: ảnh nested-fetch
+  200 đúng byte, note-embed basename fallback 200 đúng byte, file .txt tải về 200, và file trùng tên
+  nằm NGOÀI share trả 404 qua endpoint public (containment không bị bypass). Vòng 3 review phát hiện
+  containment của nhánh fallback mới thêm chỉ kiểm tra lexical (`withinShareFolder`) chứ không phải
+  realpath như nhánh chính — symlink trong thư mục share trỏ ra ngoài (nhưng vẫn trong vault) có thể
+  lọt qua fallback dù đã bị chặn ở nhánh chính. Sửa: candidate hợp lệ theo lexical được chạy lại qua
+  `resolveInShareFolder` (đã có kiểm containment bằng realpath) trước khi serve — không đụng
+  `vault.ts`. Verify trực tiếp: tạo symlink thật trong thư mục share trỏ ra file khác trong vault →
+  404 qua mọi dạng path; file thật hợp lệ trong share vẫn 200 qua fallback (không phá case vừa sửa
+  ở vòng 2). Sau 3 vòng review (1 Important + 5 Minor vòng 1, 1 Important vòng 2, 1 Important vòng 3
+  — tất cả đã fix và verify sống trên dev server thật), merge fast-forward vào `main`, push `fork`,
+  deploy droplet `obsidian.henry-group.uk` qua `git pull && docker compose up -d --build`. Verify sau
+  deploy: `git log -1` khớp commit cuối, `GET /healthz` `{"ok":true}` (cả nội bộ 127.0.0.1:8787 lẫn
+  qua `https://obsidian.henry-group.uk`), route mới `/share/<id-không-tồn-tại>` và `/share/<id>/f`
+  trả 404 sạch (không crash), log container không có lỗi/exception. **Không** tự tạo folder share
+  thật trên prod để test (không có mật khẩu đăng nhập prod — theo đúng quy ước bảo mật, không lưu ở
+  đây) — phần này người dùng tự kiểm tra qua UI khi rảnh.
 - 2026-07-14 (Phase 32 — Quick filter tên file + Recent theo Added/Modified, theo yêu cầu người
   dùng): vault nhiều note khiến khó tìm note gần đây/theo tên. (1) File Explorer thêm ô filter tên
   file đầu panel (`web/src/lib/normalize.ts#matchesQuery`) — chuẩn hoá bỏ dấu tiếng Việt (kể cả
