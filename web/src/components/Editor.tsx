@@ -11,6 +11,8 @@ import { useStore } from '../lib/store';
 import type { TreeNode } from '../lib/api';
 import { obsidianKeymap } from '../lib/editorCommands';
 import { suggesterPlugin, setLinkSuggestFiles, setTagSuggestTags } from '../lib/suggest';
+import { activeHeadingIndex } from '../lib/outlineNav';
+import { setActiveHeading } from '../lib/outlineActive';
 import {
   livePreviewPlugin,
   livePreviewState,
@@ -23,6 +25,10 @@ import {
   htmlPreviewField,
   calloutFoldState,
   calloutFoldDeco,
+  notePathField,
+  setNotePath,
+  headingFoldDeco,
+  headingFoldControlsPlugin,
   noteTitleField,
   inlineTitleField,
   editorClickFix,
@@ -35,6 +41,7 @@ import {
   setLivePreviewPropertyProvider,
   setLivePreviewPropertyTypes,
   setLivePreviewPropertyTypeSetter,
+  setLivePreviewRenameHandler,
   setLivePreviewTagProvider,
   setNoteTitle,
 } from '../lib/livePreview';
@@ -45,6 +52,19 @@ import { api } from '../lib/api';
 const titleOf = (path: string | null) =>
   path ? (path.split('/').pop() ?? path).replace(/\.(md|markdown)$/i, '') : '';
 
+// Scroll position per note (device-local, survives F5 via sessionStorage — the
+// EditorView is torn down and recreated from scratch on every reload/file switch,
+// so without this it always resets to the top).
+const scrollKey = (path: string) => `wo:scroll:${path}`;
+const loadScrollTop = (path: string): number | null => {
+  const raw = sessionStorage.getItem(scrollKey(path));
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) ? n : null;
+};
+const saveScrollTop = (path: string, top: number) => {
+  sessionStorage.setItem(scrollKey(path), String(top));
+};
+
 // Reading mode = the same Live Preview editor, made read-only via this compartment.
 const readonlyExt = (reading: boolean) =>
   reading ? [EditorView.editable.of(false), EditorState.readOnly.of(true)] : [];
@@ -54,6 +74,9 @@ export default function Editor() {
   const view = useRef<EditorView | null>(null);
   const readonlyComp = useRef(new Compartment()).current;
   const applyingExternal = useRef(false);
+  // Path we've already restored the scroll position for, so a later cross-tab
+  // content sync doesn't keep yanking the user back after they've scrolled.
+  const scrollRestoredFor = useRef<string | null>(null);
   const activePath = useStore((s) => s.activePath);
   const content = useStore((s) => s.content);
   const setContent = useStore((s) => s.setContent);
@@ -67,6 +90,12 @@ export default function Editor() {
   useEffect(() => {
     setLivePreviewLinkHandler(openWikilink);
   }, [openWikilink]);
+
+  useEffect(() => {
+    setLivePreviewRenameHandler((newTitle) => {
+      void useStore.getState().renameActiveNote(newTitle);
+    });
+  }, []);
 
   useEffect(() => {
     setLivePreviewMenuHandler(openContextMenu);
@@ -234,11 +263,32 @@ export default function Editor() {
     });
   };
 
+  // Restore a note's saved scroll position at most once per mount — guarded so a
+  // later cross-tab content sync doesn't keep yanking the user back after they've
+  // since scrolled elsewhere themselves.
+  const restoreScrollOnce = (v: EditorView, path: string) => {
+    if (scrollRestoredFor.current === path) return;
+    scrollRestoredFor.current = path;
+    const savedTop = loadScrollTop(path);
+    if (savedTop !== null) requestAnimationFrame(() => { v.scrollDOM.scrollTop = savedTop; });
+  };
+
   // (Re)create the view when the active file changes.
   useEffect(() => {
     if (!host.current) return;
     view.current?.destroy();
+    scrollRestoredFor.current = null;
 
+    let scrollSaveTimer = 0;
+    // Scroll-spy: phát heading đang xem cho Outline panel (throttle bằng rAF).
+    let activeRaf = 0;
+    const scheduleActiveHeading = (v: EditorView) => {
+      if (activeRaf) return;
+      activeRaf = requestAnimationFrame(() => {
+        activeRaf = 0;
+        setActiveHeading(activeHeadingIndex(v));
+      });
+    };
     const isMd = activePath ? /\.(md|markdown)$/i.test(activePath) : false;
     // Place the caret after the frontmatter so Properties render immediately.
     const fmMatch = isMd ? content.match(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/) : null;
@@ -286,12 +336,24 @@ export default function Editor() {
         htmlPreviewField,
         calloutFoldState,
         calloutFoldDeco,
+        notePathField.init(() => activePath),
+        headingFoldDeco,
+        headingFoldControlsPlugin,
         livePreviewPlugin,
         livePreviewTheme,
         editorClickFix,
         EditorView.updateListener.of((u) => {
           // Ignore doc changes we applied programmatically (external content sync)
           if (u.docChanged && !applyingExternal.current) setContent(u.state.doc.toString());
+          if (u.geometryChanged || u.viewportChanged || u.docChanged) scheduleActiveHeading(u.view);
+        }),
+        EditorView.domEventHandlers({
+          scroll: (_event, ev) => {
+            scheduleActiveHeading(ev);
+            if (!activePath) return;
+            window.clearTimeout(scrollSaveTimer);
+            scrollSaveTimer = window.setTimeout(() => saveScrollTop(activePath, ev.scrollDOM.scrollTop), 150);
+          },
         }),
       ],
     });
@@ -299,7 +361,15 @@ export default function Editor() {
     view.current = v;
     setActiveEditor(v);
     v.focus();
+    scheduleActiveHeading(v);
+    // Only safe to restore here if `content` is already the note's real content —
+    // on reload it's still the pre-hydrate placeholder, and the content-sync effect
+    // below will apply the real text (and restore scroll) once it arrives.
+    if (activePath && content) restoreScrollOnce(v, activePath);
     return () => {
+      window.clearTimeout(scrollSaveTimer);
+      if (activeRaf) cancelAnimationFrame(activeRaf);
+      setActiveHeading(-1);
       setActiveEditor(null);
       v.destroy();
     };
@@ -323,6 +393,8 @@ export default function Editor() {
       selection: { anchor: initPos },
     });
     applyingExternal.current = false;
+    if (activePath) restoreScrollOnce(v, activePath);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content]);
 
   // Toggle live preview / readonly when the view mode changes (no recreate).
@@ -334,6 +406,7 @@ export default function Editor() {
         setLivePreviewReadonly.of(viewMode === 'reading'),
         readonlyComp.reconfigure(readonlyExt(viewMode === 'reading')),
         setNoteTitle.of(titleOf(activePath)),
+        setNotePath.of(activePath),
       ],
     });
   }, [viewMode, activePath]);

@@ -43,6 +43,16 @@ settingsRouter.put(
       if (body.api && typeof body.api.rateLimitPerMin === 'number') {
         d.api.rateLimitPerMin = body.api.rateLimitPerMin;
       }
+      if (body.llm) {
+        const { anthropicApiKey, openaiApiKey, ...rest } = body.llm;
+        Object.assign(d.llm, rest);
+        if (typeof anthropicApiKey === 'string' && anthropicApiKey && anthropicApiKey !== '••••••••') {
+          d.llm.anthropicApiKey = anthropicApiKey;
+        }
+        if (typeof openaiApiKey === 'string' && openaiApiKey && openaiApiKey !== '••••••••') {
+          d.llm.openaiApiKey = openaiApiKey;
+        }
+      }
     });
     res.json(redactSettings(updated));
   }),

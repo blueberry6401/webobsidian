@@ -37,6 +37,8 @@ export interface MatchContext {
   /** ellipsis flags — context is clipped from the surrounding body. */
   pre: boolean;
   post: boolean;
+  /** 1-based line number of the first occurrence in this context (for agent grep). */
+  line?: number;
 }
 
 export interface NoteMatches {
@@ -80,6 +82,11 @@ class QmdEngine {
   // Per-note frontmatter key→type, for the vault-wide property suggestions list.
   private propMeta = new Map<string, Record<string, string>>();
   private ready = false;
+  private persistTimer: NodeJS.Timeout | null = null;
+  // Coalesce bursts of incremental upsert/remove (e.g. ~900ms autosave ticks, or a
+  // chokidar event storm from `git pull` touching many files) into one disk write
+  // instead of one per note — full build() still persists immediately.
+  private static PERSIST_DEBOUNCE_MS = 3000;
 
   constructor() {
     this.mini = this.newIndex();
@@ -152,7 +159,9 @@ class QmdEngine {
       else this.mini.add(doc);
     } catch {
       this.remove(rel);
+      return;
     }
+    this.schedulePersist();
   }
 
   remove(rel: string): void {
@@ -160,6 +169,24 @@ class QmdEngine {
     this.snippets.delete(rel);
     this.tagSet.delete(rel);
     this.propMeta.delete(rel);
+    this.schedulePersist();
+  }
+
+  private schedulePersist(): void {
+    if (this.persistTimer) return;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      void this.persist();
+    }, QmdEngine.PERSIST_DEBOUNCE_MS);
+  }
+
+  /** Write any pending debounced index change immediately (e.g. before process exit). */
+  async flush(): Promise<void> {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    await this.persist();
   }
 
   async rename(from: string, to: string): Promise<void> {
@@ -215,8 +242,15 @@ class QmdEngine {
     if (!needles.length) return { path: rel, count: 0, contexts: [] };
 
     let body = '';
+    // Số dòng frontmatter bị `parseNote` cắt khỏi body. `line` phải đếm theo TOÀN
+    // file (như offset của read_note) chứ không theo body, nếu không grep→read_note
+    // sẽ lệch đúng bằng độ dài frontmatter khi note có YAML đầu file.
+    let lineShift = 0;
     try {
-      body = parseNote(rel, await readFileText(rel)).body;
+      const raw = await readFileText(rel);
+      body = parseNote(rel, raw).body;
+      const idx = raw.indexOf(body);
+      lineShift = idx > 0 ? raw.slice(0, idx).split('\n').length - 1 : 0;
     } catch {
       return { path: rel, count: 0, contexts: [] };
     }
@@ -257,7 +291,9 @@ class QmdEngine {
       // length-preserving newline/tab → space so range offsets stay valid
       const text = body.slice(winStart, winEnd).replace(/[\n\r\t]/g, ' ');
       const ranges = group.map((o) => [o.start - winStart, o.len] as [number, number]);
-      contexts.push({ text: text.trim(), ranges: shiftRanges(text, ranges), pre: winStart > 0, post: winEnd < body.length });
+      const firstStart = group[0].start;
+      const line = lineShift + 1 + (body.slice(0, firstStart).match(/\n/g)?.length ?? 0);
+      contexts.push({ text: text.trim(), ranges: shiftRanges(text, ranges), pre: winStart > 0, post: winEnd < body.length, line });
       group = [];
     };
 

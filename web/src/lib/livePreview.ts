@@ -11,6 +11,8 @@ import { syntaxTree } from '@codemirror/language';
 import { CALLOUT_SLOT, CALLOUT_RE, calloutDefaultTitle, calloutIconSvg } from './callouts';
 import { openLightbox } from './imageLightbox';
 import { VIDEO_EXT_RE, AUDIO_EXT_RE } from './media';
+import { computeHeadingKeys, loadCollapsed, saveCollapsed } from './headingFold';
+import { setFoldControls } from './headingFoldControls';
 
 /**
  * Live Preview for CodeMirror 6 — an Obsidian-style WYSIWYG editing mode.
@@ -25,6 +27,11 @@ import { VIDEO_EXT_RE, AUDIO_EXT_RE } from './media';
 let openLink: (target: string) => void = () => {};
 export function setLivePreviewLinkHandler(fn: (target: string) => void) {
   openLink = fn;
+}
+
+let renameActiveTitle: (newTitle: string) => void = () => {};
+export function setLivePreviewRenameHandler(fn: (newTitle: string) => void) {
+  renameActiveTitle = fn;
 }
 
 export interface LpMenuItem {
@@ -807,6 +814,176 @@ export const calloutFoldDeco = StateField.define<DecorationSet>({
   },
   provide: (f) => EditorView.decorations.from(f),
 });
+
+/* ---------------- heading folding (reading view, persisted per note) ---------------- */
+
+/** Active note path — lets the heading-fold builder key localStorage per note. */
+export const setNotePath = StateEffect.define<string | null>();
+export const notePathField = StateField.define<string | null>({
+  create: () => null,
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(setNotePath)) return e.value;
+    return value;
+  },
+});
+
+/** Dispatched after a fold toggle to force the deco field to rebuild from storage. */
+export const headingFoldRefresh = StateEffect.define<null>();
+
+const HEADING_LINE_RE = /^(#{1,6})\s+(.*\S)\s*$/;
+const FENCE_RE = /^\s*(```|~~~)/;
+
+export interface DocHeading {
+  level: number;
+  text: string;
+  lineFrom: number;
+  lineTo: number;
+  lineNo: number;
+}
+
+/** Scan the document for ATX headings, skipping fenced code blocks. */
+export function scanDocHeadings(doc: Text): DocHeading[] {
+  const out: DocHeading[] = [];
+  let inFence = false;
+  for (let n = 1; n <= doc.lines; n++) {
+    const line = doc.line(n);
+    if (FENCE_RE.test(line.text)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const m = line.text.match(HEADING_LINE_RE);
+    if (m) out.push({ level: m[1].length, text: m[2].trim(), lineFrom: line.from, lineTo: line.to, lineNo: n });
+  }
+  return out;
+}
+
+/** Clickable chevron placed at the start of a foldable heading line. */
+class HeadingFoldWidget extends WidgetType {
+  constructor(readonly foldKey: string, readonly folded: boolean, readonly notePath: string | null) {
+    super();
+  }
+  eq(o: HeadingFoldWidget) {
+    return o.foldKey === this.foldKey && o.folded === this.folded && o.notePath === this.notePath;
+  }
+  toDOM(view: EditorView) {
+    const ch = document.createElement('span');
+    ch.className = 'cm-heading-fold' + (this.folded ? ' is-folded' : '');
+    ch.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+    ch.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const np = view.state.field(notePathField, false) ?? this.notePath;
+      const set = np ? loadCollapsed(np) : new Set<string>();
+      if (set.has(this.foldKey)) set.delete(this.foldKey);
+      else set.add(this.foldKey);
+      if (np) saveCollapsed(np, set);
+      view.dispatch({ effects: headingFoldRefresh.of(null) });
+    });
+    return ch;
+  }
+  ignoreEvent(e: Event) {
+    return e.type === 'mousedown';
+  }
+}
+
+/**
+ * Fold headings in READING mode only (read-only Live Preview). Each foldable
+ * heading gets a chevron; folded ones hide their section (down to the next
+ * heading of equal/higher level) via a block-replace. Folded state is derived
+ * from localStorage each build (keyed by breadcrumb), so it survives reloads and
+ * note switches without tracking editor positions.
+ */
+function buildHeadingFolds(state: EditorState): DecorationSet {
+  if (!state.field(livePreviewState, false)) return Decoration.none;
+  // Reading view only — never alter the live-edit experience.
+  if (!(state.field(livePreviewReadonly, false) ?? false)) return Decoration.none;
+  const doc = state.doc;
+  const heads = scanDocHeadings(doc);
+  if (heads.length === 0) return Decoration.none;
+  const notePath = state.field(notePathField, false) ?? null;
+  const keys = computeHeadingKeys(heads.map((h) => ({ level: h.level, text: h.text })));
+  const collapsed = notePath ? loadCollapsed(notePath) : new Set<string>();
+  const ranges: Range<Decoration>[] = [];
+  let hiddenUntil = -1;
+  for (let i = 0; i < heads.length; i++) {
+    const h = heads[i];
+    // Skip headings hidden inside a collapsed ancestor's section.
+    if (h.lineFrom <= hiddenUntil) continue;
+    const folded = collapsed.has(keys[i]);
+    ranges.push(
+      Decoration.widget({ widget: new HeadingFoldWidget(keys[i], folded, notePath), side: -1 }).range(h.lineFrom),
+    );
+    if (!folded) continue;
+    // Section end = start of the next heading with level <= this one, else doc end.
+    let end = doc.length;
+    for (let j = i + 1; j < heads.length; j++) {
+      if (heads[j].level <= h.level) {
+        end = doc.line(heads[j].lineNo).from - 1;
+        break;
+      }
+    }
+    if (end > h.lineTo) {
+      ranges.push(Decoration.replace({ block: true }).range(h.lineTo, end));
+      hiddenUntil = end;
+    }
+  }
+  return Decoration.set(ranges, true);
+}
+
+export const headingFoldDeco = StateField.define<DecorationSet>({
+  create: (state) => buildHeadingFolds(state),
+  update(value, tr) {
+    if (
+      tr.docChanged ||
+      tr.effects.some(
+        (e) =>
+          e.is(headingFoldRefresh) ||
+          e.is(setNotePath) ||
+          e.is(setLivePreviewEnabled) ||
+          e.is(setLivePreviewReadonly),
+      )
+    ) {
+      return buildHeadingFolds(tr.state);
+    }
+    return value.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+/** Registers Collapse-all / Expand-all controls for the active editor's note. */
+export const headingFoldControlsPlugin = ViewPlugin.fromClass(
+  class {
+    constructor(readonly view: EditorView) {
+      this.register();
+    }
+    update(u: ViewUpdate) {
+      if (u.docChanged || u.transactions.some((t) => t.effects.some((e) => e.is(setNotePath)))) {
+        this.register();
+      }
+    }
+    register() {
+      const view = this.view;
+      setFoldControls({
+        collapseAll: () => {
+          const np = view.state.field(notePathField, false) ?? null;
+          const heads = scanDocHeadings(view.state.doc);
+          const keys = computeHeadingKeys(heads.map((h) => ({ level: h.level, text: h.text })));
+          if (np) saveCollapsed(np, new Set(keys));
+          view.dispatch({ effects: headingFoldRefresh.of(null) });
+        },
+        expandAll: () => {
+          const np = view.state.field(notePathField, false) ?? null;
+          if (np) saveCollapsed(np, new Set());
+          view.dispatch({ effects: headingFoldRefresh.of(null) });
+        },
+      });
+    }
+    destroy() {
+      setFoldControls(null);
+    }
+  },
+);
 
 /* ---------------- tables ---------------- */
 
@@ -2490,16 +2667,62 @@ export const livePreviewReadonly = StateField.define<boolean>({
 /* ---------------- inline title (note filename, Obsidian-style) ---------------- */
 
 class TitleWidget extends WidgetType {
-  constructor(readonly title: string) {
+  constructor(readonly title: string, readonly ro: boolean) {
     super();
   }
   eq(o: TitleWidget) {
-    return o.title === this.title;
+    return o.title === this.title && o.ro === this.ro;
+  }
+  ignoreEvent() {
+    // We own all interaction (contenteditable + commit); keep events from reaching CM.
+    return true;
   }
   toDOM() {
-    const d = document.createElement('div');
-    d.className = 'cm-inline-title';
-    d.textContent = this.title;
+    if (this.ro) {
+      const d = document.createElement('div');
+      d.className = 'cm-inline-title';
+      d.textContent = this.title;
+      return d;
+    }
+    // A real <input> instead of a contenteditable div: it has its own isolated
+    // focus/selection/keyboard model that the browser handles as a plain form
+    // control, independent of CM's document/selection machinery — a nested
+    // contenteditable island inside .cm-content fought CM for focus on Mod-a
+    // (select all) and lost every time, no matter what its own keydown handler did.
+    const d = document.createElement('input');
+    d.type = 'text';
+    d.className = 'cm-inline-title cm-inline-title-editable';
+    d.value = this.title;
+    d.autocomplete = 'off';
+    d.autocapitalize = 'off';
+    d.spellcheck = false;
+    const original = this.title;
+    let cancelled = false;
+    const commit = () => {
+      if (cancelled) {
+        cancelled = false;
+        return;
+      }
+      // `/` renames-in-place only, never moves the file.
+      const next = d.value.replace(/[/\\]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!next || next === original) {
+        d.value = original;
+        return;
+      }
+      renameActiveTitle(next);
+    };
+    d.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        d.blur();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelled = true;
+        d.value = original;
+        d.blur();
+      }
+    });
+    d.addEventListener('blur', commit);
     return d;
   }
 }
@@ -2525,13 +2748,17 @@ function buildInlineTitle(state: EditorState): DecorationSet {
   const firstLine = noFm.split(/\r?\n/).find((l) => l.trim() !== '');
   const h1 = firstLine?.match(/^#\s+(.+?)\s*$/);
   if (h1 && h1[1].trim().toLowerCase() === title.trim().toLowerCase()) return Decoration.none;
-  return Decoration.set([Decoration.widget({ widget: new TitleWidget(title), block: true, side: -1 }).range(0)]);
+  const ro = state.field(livePreviewReadonly, false) ?? false;
+  return Decoration.set([Decoration.widget({ widget: new TitleWidget(title, ro), block: true, side: -1 }).range(0)]);
 }
 
 export const inlineTitleField = StateField.define<DecorationSet>({
   create: (state) => buildInlineTitle(state),
   update(value, tr) {
-    if (tr.docChanged || tr.effects.some((e) => e.is(setNoteTitle) || e.is(setLivePreviewEnabled))) {
+    if (
+      tr.docChanged ||
+      tr.effects.some((e) => e.is(setNoteTitle) || e.is(setLivePreviewEnabled) || e.is(setLivePreviewReadonly))
+    ) {
       return buildInlineTitle(tr.state);
     }
     return value.map(tr.changes);
@@ -2641,6 +2868,27 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
 export const editorClickFix = EditorView.domEventHandlers({
   mousedown(event, view) {
     if (event.button !== 0 || event.shiftKey || event.detail > 1) return false;
+    // Bare URLs (§Bare URLs above) only get a `cm-url` style mark, not a widget
+    // like [text](url)/wikilinks — so unlike those, a click here never opens
+    // anything without this explicit handler.
+    const urlEl = (event.target as HTMLElement | null)?.closest?.('.cm-url') as HTMLElement | null;
+    if (urlEl) {
+      // The `cm-url` mark is only ever applied to text matching urlRe (http(s)/ftp
+      // prefix), but re-check the scheme here rather than trust that invariant —
+      // window.open on an unvalidated string is an XSS vector if it ever drifts.
+      let parsed: URL | null = null;
+      try {
+        parsed = new URL((urlEl.textContent ?? '').trim());
+      } catch {
+        parsed = null;
+      }
+      if (parsed && (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'ftp:')) {
+        event.preventDefault();
+        window.open(parsed.toString(), '_blank', 'noopener,noreferrer');
+        return true;
+      }
+      return false;
+    }
     // `precise: false` returns the CLOSEST position and never null, so clicking
     // anywhere on a tall heading line-box (incl. its padding, where the default
     // posAtCoords returns null and CM leaves the caret put) still moves the caret
@@ -2667,6 +2915,23 @@ export const livePreviewTheme = EditorView.baseTheme({
     color: 'var(--text-normal)',
     margin: '0 0 0.5em',
     padding: '0',
+  },
+  '.cm-inline-title-editable': {
+    display: 'block',
+    width: '100%',
+    font: 'inherit',
+    letterSpacing: 'inherit',
+    color: 'inherit',
+    border: 'none',
+    background: 'transparent',
+    cursor: 'text',
+    outline: 'none',
+    borderRadius: '4px',
+  },
+  '.cm-inline-title-editable:hover': { background: 'var(--bg-modifier-hover)' },
+  '.cm-inline-title-editable:focus': {
+    background: 'var(--bg-primary)',
+    boxShadow: 'inset 0 0 0 1px var(--interactive-accent)',
   },
   '.cm-em': { fontStyle: 'italic' },
   '.cm-strike': { textDecoration: 'line-through' },

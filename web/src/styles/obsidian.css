@@ -444,7 +444,7 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .cm-s-obsidian .cm-math { color: var(--text-muted); font-style: italic; }
 .cm-s-obsidian .cm-footref { color: var(--text-accent); font-size: var(--font-smallest); vertical-align: super; }
 .cm-s-obsidian .cm-blockid { color: var(--text-faint); font-size: var(--font-smaller); }
-.cm-s-obsidian .cm-url { color: var(--text-accent); text-decoration: underline; }
+.cm-s-obsidian .cm-url { color: var(--text-accent); text-decoration: underline; cursor: pointer; }
 /* Tag pill: bg accent@10%, radius 2em, padding 0.25em 0.65em (split begin/end halves) */
 .cm-s-obsidian .cm-hashtag { background: var(--tag-bg); color: var(--text-accent); font-size: var(--font-smaller); }
 .cm-s-obsidian .cm-hashtag-begin { border-radius: 2em 0 0 2em; padding: 0.25em 0 0.25em 0.65em; }
@@ -544,6 +544,20 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
   color: rgb(var(--callout-color, var(--callout-default))); transition: transform var(--transition); }
 .cm-callout-fold svg { width: 16px; height: 16px; }
 .cm-callout-fold.is-folded { transform: rotate(-90deg); }
+/* Collapsible headings (reading view) — chevron before the heading, hover-reveal */
+.cm-heading-fold { display: inline-flex; align-items: center; justify-content: center;
+  width: 0.9em; margin-right: 0.1em; vertical-align: middle;
+  /* H1's em is ~1.6x the base font, so a flat -1em can pull the chevron past
+     the available gutter on narrow screens (--file-margins shrinks to 14px on
+     mobile) and get clipped by .cm-content's overflow-x: hidden. Clamp to
+     whichever pull is smaller: the heading's own em, or the actual gutter. */
+  margin-left: max(-1em, calc(-1 * var(--file-margins) + 2px));
+  color: var(--text-faint); cursor: pointer; opacity: 0;
+  transition: opacity var(--transition), transform var(--transition); }
+.cm-heading-fold svg { width: 0.7em; height: 0.7em; }
+.cm-s-obsidian .cm-line.HyperMD-header:hover .cm-heading-fold { opacity: 1; }
+.cm-heading-fold.is-folded { opacity: 1; transform: rotate(-90deg); }
+@media (hover: none), (pointer: coarse) { .cm-heading-fold { opacity: 1; } }
 /* Callout (per-line rendering; colors via --callout-color RGB triplet) */
 .cm-s-obsidian .cm-line.cm-callout-line { background: rgba(var(--callout-color, var(--callout-default)), 0.1);
   mix-blend-mode: var(--highlight-mix-blend-mode); padding-left: 24px; padding-right: 12px; }
@@ -700,6 +714,21 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .callout-fold { display: inline-flex; margin-left: 4px; color: rgb(var(--callout-color)); transition: transform var(--transition); }
 .callout-fold svg { width: 16px; height: 16px; }
 .callout.is-collapsed .callout-fold { transform: rotate(-90deg); }
+/* Collapsible headings (reading view) — chevron ẩn, hiện khi hover dòng heading */
+.markdown-preview .heading-foldable { position: relative; }
+.markdown-preview .heading-fold {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1em; margin-left: -1.1em; margin-right: 0.1em;
+  color: var(--text-faint); cursor: pointer;
+  opacity: 0; transition: opacity var(--transition), transform var(--transition);
+  vertical-align: middle;
+}
+.markdown-preview .heading-fold svg { width: 0.7em; height: 0.7em; }
+.markdown-preview .heading-foldable:hover .heading-fold { opacity: 1; }
+.markdown-preview .heading-foldable.is-collapsed .heading-fold { opacity: 1; transform: rotate(-90deg); }
+@media (hover: none), (pointer: coarse) {
+  .markdown-preview .heading-fold { opacity: 1; }
+}
 /* type → color slot mapping (§21) */
 .callout[data-callout='abstract'], .callout[data-callout='summary'], .callout[data-callout='tldr'] { --callout-color: var(--callout-summary); }
 .callout[data-callout='info'] { --callout-color: var(--callout-info); }
@@ -842,6 +871,14 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .panel-item-actions > span { display: flex; padding: 2px; border-radius: var(--radius-s); color: var(--text-faint); }
 .panel-item-actions > span:hover { color: var(--text-normal); background: var(--bg-modifier-hover); }
 
+.recent-filter-row { display: flex; gap: 4px; padding: 2px 8px; flex-wrap: wrap; }
+.recent-filter-btn {
+  border: 0; background: transparent; color: var(--text-muted); cursor: pointer;
+  padding: 3px 8px; border-radius: var(--radius-s); font-size: 12px;
+}
+.recent-filter-btn:hover { background: var(--bg-modifier-hover); color: var(--text-normal); }
+.recent-filter-btn.active { color: var(--text-accent); background: var(--bg-modifier-hover); font-weight: 500; }
+
 /* Folder content view (deep-link /note/<folder>) */
 .folder-view-head { display: flex; align-items: center; gap: 10px; }
 .folder-view-head h1 { display: flex; align-items: center; gap: 10px; flex: 1; margin: 0; }
@@ -874,6 +911,11 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .mention-box .mention-src { color: var(--text-accent); font-weight: 600; margin-bottom: 4px; cursor: pointer; }
 .outline-item { padding: 3px 10px; font-size: 13px; cursor: pointer; color: var(--text-muted); border-radius: var(--radius-s); }
 .outline-item:hover { color: var(--text-normal); background: var(--bg-modifier-hover); }
+.outline-item.is-active {
+  color: var(--text-normal);
+  background: var(--bg-modifier-hover);
+  box-shadow: inset 2px 0 0 var(--interactive-accent);
+}
 
 /* Status bar — anchored to the bottom-right of the editor pane (like Obsidian) */
 .status-bar {
@@ -1298,6 +1340,17 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .share-url { display: flex; gap: 6px; margin: 4px 0 10px; }
 .share-url .text-input { flex: 1; min-width: 0; }
 .share-dialog-foot { display: flex; justify-content: flex-end; margin-top: 12px; }
+
+/* ---- HTML Preview dialog + tab (LLM-generated, per-note) ---- */
+.html-preview-dialog .setting-row { align-items: flex-start; }
+.html-preview-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.html-preview-toolbar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--bg-modifier-border); flex-shrink: 0; }
+.html-preview-frame-wrap { flex: 1; min-height: 0; }
+.html-preview-frame { width: 100%; height: 100%; border: 0; background: #fff; display: block; }
+.html-preview-badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--bg-secondary); color: var(--text-muted); }
+.html-preview-badge.generating { color: var(--text-accent, #7b6cd9); }
+.html-preview-badge.error { color: #e5534b; background: rgba(229, 83, 75, .12); }
+.html-preview-badge.outofsync { color: #d9822b; background: rgba(217, 130, 43, .12); }
 
 /* ---- Reveal file in navigation: brief highlight of the targeted row ---- */
 .tree-row.reveal-flash { animation: wo-reveal-flash 1.2s ease-out; }

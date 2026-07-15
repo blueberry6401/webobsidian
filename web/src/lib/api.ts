@@ -56,6 +56,26 @@ export interface GitCommit {
   author: string;
 }
 
+export interface HtmlTemplate {
+  id: string;
+  name: string;
+  prompt: string;
+}
+
+export interface HtmlPreviewRecord {
+  id: string;
+  notePath: string;
+  name: string;
+  templateId: string | null;
+  prompt: string;
+  status: 'generating' | 'done' | 'error';
+  error: string | null;
+  sourceHash: string | null;
+  createdAt: string;
+  updatedAt: string;
+  outOfSync: boolean;
+}
+
 async function req<T>(url: string, opts: RequestInit = {}): Promise<T> {
   const { headers: optHeaders, ...rest } = opts;
   const res = await fetch(url, {
@@ -233,4 +253,25 @@ export const api = {
     req<{ plugin: any }>('/api/plugins/install', { method: 'POST', body: JSON.stringify({ repo }) }),
   setPluginEnabled: (id: string, enabled: boolean) =>
     req<{ ok: true }>(`/api/plugins/${id}/enabled`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+
+  // html preview (LLM-generated, per-note)
+  listHtmlPreviews: (notePath: string) =>
+    req<{ previews: HtmlPreviewRecord[] }>(`/api/html-preview/?notePath=${encodeURIComponent(notePath)}`),
+  createHtmlPreview: (body: {
+    notePath: string;
+    templateId?: string | null;
+    prompt?: string;
+    name?: string;
+    saveAsTemplate?: { name: string };
+  }) => req<{ preview: HtmlPreviewRecord }>('/api/html-preview/', { method: 'POST', body: JSON.stringify(body) }),
+  getHtmlPreview: (id: string) =>
+    req<{ preview: HtmlPreviewRecord; html: string | null }>(`/api/html-preview/${id}`),
+  regenerateHtmlPreview: (id: string) =>
+    req<{ preview: HtmlPreviewRecord }>(`/api/html-preview/${id}/regenerate`, { method: 'POST' }),
+  renameHtmlPreview: (id: string, name: string) =>
+    req<{ preview: HtmlPreviewRecord }>(`/api/html-preview/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  deleteHtmlPreview: (id: string) => req<{ ok: true }>(`/api/html-preview/${id}`, { method: 'DELETE' }),
+  // Real navigation URL for the <iframe src=…> — gets its own CSP (allows the inline
+  // <script>/onclick LLM-generated pages use), unlike srcDoc which inherits the app's CSP.
+  htmlPreviewRawUrl: (id: string) => `/api/html-preview/${id}/raw`,
 };

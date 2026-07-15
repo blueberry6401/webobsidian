@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-15 (bắt đầu Phase 28 — Share thư mục + Share có thời hạn, theo yêu cầu người dùng)
+Cập nhật lần cuối: 2026-07-15 (đồng bộ fork/main tới Phase 32; bắt đầu Phase 33 — Share thư mục + Share có thời hạn, theo yêu cầu người dùng)
 
 ---
 
@@ -63,6 +63,10 @@ Cập nhật lần cuối: 2026-07-15 (bắt đầu Phase 28 — Share thư mụ
 - [x] M7.3 `/api/v1`: notes list/read/write/append/delete, search, backlinks, tags
 - [x] M7.4 Route quản lý key `GET/POST/DELETE /api/keys`
 - [x] M7.5 Tài liệu agent API (`docs/AGENT_API.md`)
+- [x] M7.6 `PATCH /api/v1/notes/{path}` hỗ trợ find/replace nguyên tử (PRD 1.8): body
+      `{find, replace, replaceAll?}` → hàm thuần `applyEdit` (`services/noteedit.ts`, split/join,
+      không regex); 400 `invalid_body` · 404 · 409 `find_not_found`/`find_ambiguous`+count;
+      body không có `find` giữ nguyên append cũ 100%
 
 ## Phase 8 — Community plugins — FR-8
 - [x] M8.1 Đọc `.obsidian/plugins/*` (manifest + main.js)
@@ -429,25 +433,216 @@ Cập nhật lần cuối: 2026-07-15 (bắt đầu Phase 28 — Share thư mụ
       bundle desktop. Root scripts `desktop`/`desktop:dist`/`desktop:publish`; `.gitignore` thêm `desktop/.gen`,
       `desktop/release`.
 
-## Phase 28 — Share thư mục + Share có thời hạn — FR-10, PRD 1.6 (theo yêu cầu người dùng)
-- [ ] M28.1 `ShareRecord` thêm `kind: 'file'|'folder'` (mặc định `'file'` khi đọc record cũ) và
+## Phase 28 — Đổi tên file từ tiêu đề trong Live Preview — FR-2, PRD 1.6 (theo yêu cầu người dùng)
+- [x] M28.1 `livePreview.ts`: `TitleWidget` (chỉ nhánh không-readonly) chuyển thành một `<input type="text">`
+      thật thay vì `<div contenteditable>` — nested-contenteditable bên trong `.cm-content` bị CM giành lại
+      focus mỗi lần Mod-A (select all), `stopPropagation()` trên keydown không chặn được; `<input>` có model
+      focus/selection độc lập hoàn toàn với CM nên né được xung đột này. Đăng ký callback qua
+      `setLivePreviewRenameHandler` (cùng pattern `setLivePreviewMenuHandler`/`setLivePreviewLinkHandler` —
+      module không import thẳng store).
+- [x] M28.2 Store (`store.ts`): action `renameActiveNote(newTitle)` — sanitize (trim, bỏ `/`, giữ đuôi cũ,
+      no-op nếu rỗng/trùng tên), gọi `api.rename`, cập nhật `tabs`/`activePath` tại chỗ (không gọi
+      `openFile`, tránh refetch content), `loadTree()`, `notify()` khi lỗi.
+- [x] M28.3 `Editor.tsx`: wire `setLivePreviewRenameHandler` trong `useEffect` (cùng chỗ các setter khác),
+      gọi `useStore.getState().renameActiveNote`. Widget chỉ editable khi `!ro` (tức Live Preview — Source
+      không hiện tiêu đề như hiện tại; Reading đã readonly toàn pane nên render nhánh `<div>` tĩnh).
+- [x] M28.4 Kiểm thử tay **bằng Playwright thật** (không có browser tool trong harness nên tự viết script
+      chạy Chromium đã cache sẵn máy, KHÔNG thêm playwright vào deps của repo): đăng nhập, tạo note, đổi tên
+      qua tiêu đề bằng Enter → tab giữ nguyên (không đóng), URL đổi theo, đúng 1 tab; đổi tên bằng blur (click
+      ra ngoài) → commit; Esc → huỷ, tiêu đề hiện lại tên cũ, không gọi API; xoá trắng rồi blur → no-op, tên cũ
+      hiện lại; gõ `foo/bar` → server nhận `foo bar.md` (đã thay `/` bằng space, không tạo subfolder); Source
+      mode không có ô tiêu đề nào cả; Reading mode vẫn hiện tiêu đề nhưng không phải input/contenteditable.
+      7/7 kịch bản pass. `npm run typecheck` sạch cả 2 workspace.
+
+## Phase 29 — HTML Preview (LLM-generated, per-note) — FR-14, PRD 1.7 (theo yêu cầu người dùng)
+- [x] M29.1 Settings `llm` group (provider/API keys masked/openaiModel/templates CRUD) — schema +
+      redaction + `PUT /api/settings` (`server/src/services/settings.ts`, `server/src/routes/settings.ts`)
+- [x] M29.2 `llmclient.ts`: provider-agnostic `generateHtml()` (Anthropic Claude Sonnet alias / OpenAI,
+      configurable model), strips markdown code fences from the LLM response
+- [x] M29.3 `.html-preview/` vault-hidden storage (`htmlpreview.ts` service): index.json + per-preview
+      `.html` files, background generation (fire-and-forget), sweep-interrupted-on-boot, out-of-sync
+      via sha256 content hash
+- [x] M29.4 Routes `/api/html-preview` (list/create/get/regenerate/rename/delete); mounted + watcher
+      ignore + boot sweep wired into `server/src/index.ts`
+- [x] M29.5 Frontend: sentinel tab path `htmlpreview://<id>` (store.ts, same pattern as `graph://view`),
+      `HtmlPreviewDialog` (list/create/rename/delete per note), `HtmlPreviewView` tab (status badge +
+      polling + sandboxed iframe), wired into Workspace ⋯ menu + tab bar + pane dispatch
+- [x] M29.6 Settings → AI section: provider/API keys/model + template prompt CRUD
+- [x] M29.7 End-to-end verify với API key thật (Anthropic + OpenAI): tạo preview, reload giữa lúc
+      đang generate vẫn khôi phục đúng trạng thái, out-of-sync badge, tạo lại, nhiều preview/note,
+      rename/delete, thiếu key báo lỗi rõ, `.html-preview/` không lộ ra file tree/search/watcher
+
+## Phase 30 — Collapsible headings trong Reading view — FR-2 (theo yêu cầu người dùng)
+- [x] M30.1 Fold heading trong Reading view (= Live Preview read-only, CM6). Logic thuần
+      `web/src/lib/headingFold.ts` (`computeHeadingKeys` breadcrumb + hậu tố `#n` khi trùng;
+      `loadCollapsed`/`saveCollapsed` localStorage key `webobsidian:heading-fold`, xoá key khi rỗng)
+      + unit test Vitest. CM6: `headingFoldDeco` StateField mirror `calloutFoldDeco` — chevron widget
+      mỗi heading + `Decoration.replace({block:true})` ẩn section tới heading cùng/cao cấp kế tiếp;
+      derive từ localStorage mỗi build (key theo `notePathField`), **chỉ khi readonly (reading)**;
+      bỏ qua heading trong callout (dòng `>`)/embed. Persist per-note qua reload/đổi note. Collapse/
+      Expand-all qua singleton `headingFoldControls` → menu ⋯ (chỉ hiện ở Reading). `Preview.tsx`
+      (split-pane/mobile) cũng có bản post-render DOM tương đương + jsdom integration test. Verify
+      Playwright headless server thật (vault tạm, login+set-pass): 12/12 — chevron hiện khi hover,
+      collapse "Ngày 3" ẩn nội dung tới trước "Ngày 4", persist sau reload, collapse/expand-all,
+      heading trong callout không fold. Typecheck + build + `vitest` (9/9) sạch.
+
+## Phase 31 — Outline navigation (click-to-jump + scroll-spy) — FR-2 (theo yêu cầu người dùng)
+- [x] M31.1 Nâng cấp Outline panel (sidebar phải) thành thanh điều hướng giống outline Google Docs:
+      (1) đồng bộ bộ quét heading — `outline()` (`markdown.ts`) bỏ qua fenced code để khớp
+      `scanDocHeadings` (`livePreview.ts`, nay export) làm nguồn sự thật khi jump; test bất biến
+      cùng input → cùng danh sách `{level,text}`. (2) `outlineNav.ts`: helper thuần
+      `pickActiveHeading`/`ancestorIndices` + cầu nối CM `jumpToHeading(i)` (cuộn tới heading; ở
+      Reading tự mở các section collapsed che khuất qua `headingFoldRefresh`) và `activeHeadingIndex`.
+      (3) scroll-spy: `outlineActive.ts` singleton (getter/subscribe + `pinActiveHeading` ghim mục
+      vừa click ~700ms để heading cuối tài liệu highlight đúng dù không cuộn được lên đỉnh);
+      `Editor.tsx` tính `activeHeadingIndex` trên scroll/geometry (throttle rAF), reset khi unmount.
+      (4) `RightSidebar.OutlinePanel`: click → `jumpToHeading`, `.is-active` qua `useSyncExternalStore`,
+      auto-scroll mục active vào panel; CSS thanh accent trái. Áp dụng cả Reading + Editing, chỉ khung
+      editor chính (không đụng split-pane `Preview.tsx`/mobile). Verify Playwright headless server thật
+      (login+set-pass, note 9 heading + code fence): 10/10 — outline loại heading trong ```code, click
+      cuộn đúng, scroll-spy highlight theo cuộn, click mục cuối highlight đúng (pin), collapse+jump tự
+      mở section, Editing click-to-jump chạy. Typecheck + build + `vitest` (20/20) sạch.
+
+## Phase 32 — Quick filter tên file + Recent theo Added/Modified — FR-15 (theo yêu cầu người dùng)
+- [x] M32.1 `web/src/lib/normalize.ts` — `normalizeForFilter`/`matchesQuery` (bỏ dấu tiếng Việt +
+      đ/Đ + khoảng trắng), Vitest.
+- [x] M32.2 `web/src/lib/tree.ts` — `flattenFiles` (danh sách phẳng file toàn vault kèm mtime/
+      ctime), Vitest.
+- [x] M32.3 `web/src/lib/recentList.ts` — `filterAndSortRecent` theo range (week/month/3months/
+      all), Vitest.
+- [x] M32.4 `web/src/lib/store.ts` — `recent` đổi `string[]` → `RecentEntry[]` ({path, openedAt}),
+      cap 200, migrate dữ liệu cũ.
+- [x] M32.5 `FileTree.tsx` — ô filter tên file đầu panel, ẩn/hiện + auto-expand ancestor không đụng
+      `expanded` persisted.
+- [x] M32.6 `BookmarksPanel.tsx` — Recent 3 mode (Opened/Created/Modified) + 4 nút range, menu
+      "Remove from recent" chỉ ở mode Opened.
+- [x] M32.7 Verify Playwright server thật (vault tạm, login + set-pass): filter "danang" ra đúng
+      note Đà Nẵng, ẩn note không khớp, xoá filter về bình thường; Recent mode Opened hiện note vừa
+      mở; mode Modified + range 1 week ẩn note cũ >200 ngày, range All hiện lại. Typecheck +
+      `vitest` sạch.
+
+## Phase 33 — Share thư mục + Share có thời hạn — FR-10, PRD 1.10 (theo yêu cầu người dùng)
+- [ ] M33.1 `ShareRecord` thêm `kind: 'file'|'folder'` (mặc định `'file'` khi đọc record cũ) và
       `expiresAt?: string|null`. Service `shares.ts`: `isShareable` phân nhánh theo kind,
       `createShare(path, kind)`, hàm trung tâm `getShareStatus(id)` trả `active|expired|not_found`
       thay `getActiveShare()`.
-- [ ] M28.2 Route SSR `GET /share/:id/f/*subpath` (chỉ kind=folder): breadcrumb + liệt kê cây,
+- [ ] M33.2 Route SSR `GET /share/:id/f/*subpath` (chỉ kind=folder): breadcrumb + liệt kê cây,
       render note/canvas con, preview ảnh/video/audio, nút tải file khác — tất cả qua
       `vault.resolveInVault` chống traversal. `GET /share/:id` phân nhánh file/folder. Trang
       "Link đã hết hạn" riêng cho status=expired (SSR, noindex, không lộ path).
-- [ ] M28.3 `GET /public/shares/:id/file` mở allowlist cho kind=folder (mọi file trong phạm vi
+- [ ] M33.3 `GET /public/shares/:id/file` mở allowlist cho kind=folder (mọi file trong phạm vi
       thư mục, vẫn qua resolveInVault) — giữ nguyên allowlist cũ cho kind=file.
-- [ ] M28.4 API quản lý: `POST /api/shares` nhận `kind`; `PATCH /api/shares/:id` nhận `expiresAt`.
-- [ ] M28.5 UI: context menu thư mục có "Share…"; `ShareDialog` thêm 4 nút mốc thời hạn (1 ngày/
+- [ ] M33.4 API quản lý: `POST /api/shares` nhận `kind`; `PATCH /api/shares/:id` nhận `expiresAt`.
+- [ ] M33.5 UI: context menu thư mục có "Share…"; `ShareDialog` thêm 4 nút mốc thời hạn (1 ngày/
       7 ngày/30 ngày/Không giới hạn) + hiển thị hạn hiện tại; badge globe áp dụng cho thư mục.
-- [ ] M28.6 Test: unit `getShareStatus`/allowlist folder/traversal; e2e thủ công tạo folder share
-      thật qua UI, duyệt vài cấp, mở note+ảnh con, đặt hạn 1 ngày và xác nhận hiển thị đúng.
-- [ ] M28.7 Deploy prod (droplet `obsidian.henry-group.uk`), verify sau deploy.
+- [ ] M33.6 Test: unit Vitest (`server/`, workspace mới) cho `getShareStatus`/allowlist folder/
+      traversal; e2e thủ công tạo folder share thật qua UI, duyệt vài cấp, mở note+ảnh con, đặt
+      hạn 1 ngày và xác nhận hiển thị đúng.
+- [ ] M33.7 Deploy prod (droplet `obsidian.henry-group.uk`), verify sau deploy.
 
 ### Nhật ký tiến độ
+- 2026-07-14 (Phase 32 — Quick filter tên file + Recent theo Added/Modified, theo yêu cầu người
+  dùng): vault nhiều note khiến khó tìm note gần đây/theo tên. (1) File Explorer thêm ô filter tên
+  file đầu panel (`web/src/lib/normalize.ts#matchesQuery`) — chuẩn hoá bỏ dấu tiếng Việt (kể cả
+  đ/Đ) + khoảng trắng + lowercase trước khi so khớp substring, chỉ so theo filename; cây ẩn
+  file/folder không khớp, tự mở ancestor chứa match mà **không đụng** `expanded` persisted (biến
+  cục bộ `visiblePaths`, không gọi `toggleFolder` khi đang filter) nên xoá filter trả đúng trạng
+  thái mở/đóng trước đó. (2) Panel "Recent" (trước chỉ 20 note vừa mở) đổi thành 3 chế độ toggle —
+  Opened (nay lưu 200 mục kèm `openedAt`, migrate dữ liệu `string[]` cũ), Created/Modified (đọc
+  thẳng mtime/ctime đã có sẵn trong cây từ Phase 29 qua `flattenFiles`, không cần API mới) — cộng 4
+  nút lọc nhanh theo khoảng thời gian (1 week mặc định/1 month/3 months/All,
+  `recentList.ts#filterAndSortRecent`) dùng chung cho cả 3 mode. "Remove from recent" trong menu
+  chuột phải chỉ còn ở mode Opened. Verify Playwright server thật (vault tạm, login+set-pass, note
+  mtime giả lập qua `fs.utimesSync`): gõ "danang" (không dấu) ra đúng note "Đà Nẵng…", ẩn note
+  không khớp, xoá ô filter về nguyên trạng cây; mode Opened hiện note vừa mở; mode Modified + range
+  1 week ẩn note 200 ngày tuổi, range All hiện lại. Typecheck + `vitest` sạch. *Giới hạn biết
+  trước:* không kiểm định độc lập ctime khác mtime trong E2E (birthtime hệ điều hành không set tùy
+  ý qua `fs.utimes` trên hầu hết filesystem) — mode Created chỉ verify không crash + render đúng
+  cấu trúc, không verify thứ tự chính xác.
+- 2026-07-14 (hardening bảo mật — HTML Preview `/:id/raw`): automated security review (post-commit
+  hook) chỉ ra lớp chặn hiện có (`Sec-Fetch-Dest`/`Sec-Fetch-Site`, xem log 2026-07-08) là fail-open
+  — nếu client không gửi các header này (browser cũ, client phi trình duyệt), request lọt qua không
+  kiểm tra. **Thêm lớp phòng thủ độc lập, không phụ thuộc header:** `Content-Security-Policy: sandbox
+  allow-scripts` trên response — ép tài liệu vào "opaque origin" do trình duyệt thực thi, áp dụng bất
+  kể tài liệu được mở qua iframe hay điều hướng top-level trực tiếp (khác với thuộc tính `sandbox`
+  của thẻ `<iframe>` vốn chỉ có tác dụng khi nhúng đúng cách). Verify bằng Playwright trên server thật
+  (vault giả có preview mẫu): (1) `window.origin` bên trong iframe nhúng = `"null"` (opaque xác nhận);
+  (2) script cố `fetch()` kèm cookie về `/api/html-preview/...` của app → thất bại thẳng
+  ("Failed to fetch"), tức không thể đọc/ghi vault ngay cả khi bị nhúng đúng cách; (3) script/`onclick`
+  bình thường (không gọi API app) vẫn chạy đúng — tính năng accordion/nút bấm không bị ảnh hưởng.
+  Layer `Sec-Fetch-*` cũ giữ nguyên (vẫn chặn sớm + thân thiện hơn cho trường hợp phổ biến), CSP
+  `sandbox` là lớp chặn thật sự không phụ thuộc header. Typecheck sạch.
+- 2026-07-14 (fix bug — chevron collapse heading bị cắt nửa trên mobile): `.cm-heading-fold`
+  (`web/src/styles/obsidian.css`) dùng `margin-left: -1em` cố định để kéo chevron ra trước heading.
+  Vấn đề: `em` ăn theo font-size của heading (H1 = 1.618×), trong khi lề trái `.cm-content`
+  (`--file-margins`) co xuống 14px trên mobile (desktop 32px) — với H1, `-1em` ≈ -26px > 14px lề,
+  chevron bị đẩy ra ngoài `.cm-content` và bị cắt bởi `overflow-x: hidden` (rule mobile chống trôi
+  ngang). Đo bằng Playwright (viewport 390×844, prod build thật): trước fix chevron x=-11.9px (≈
+  một nửa icon 23px nằm ngoài màn hình — khớp mô tả lỗi); sau fix x=2px. **Sửa:** kẹp margin bằng
+  `max(-1em, calc(-1 * var(--file-margins) + 2px))` — chọn mức kéo nhỏ hơn giữa em heading và lề
+  thực tế, giữ nguyên hành vi desktop (lề rộng hơn 1em nên vẫn dùng nhánh `-1em` cũ). Build sạch.
+- 2026-07-11 (Phase 31 — Outline navigation): biến Outline panel tĩnh thành thanh điều hướng
+  click-to-jump + scroll-spy (highlight heading đang xem) giống Google Docs. Điểm dễ vỡ nhất là
+  đồng bộ chỉ số heading giữa Outline (`outline()`) và editor (`scanDocHeadings`): trước đây
+  `outline()` không bỏ qua fenced code nên đếm cả `#` trong ```block```, làm click lệch — đã thống
+  nhất bộ quét + test bất biến. Papercut phát hiện khi E2E: click heading cuối tài liệu không cuộn
+  được lên đỉnh nên scroll-spy tô sáng heading ở đỉnh viewport thay vì mục vừa click — sửa bằng
+  cơ chế pin ngắn hạn trong `outlineActive` (ghim mục click active, chặn scroll-spy ghi đè ~700ms).
+  Verify Playwright (Chromium headless) trên prod build thật: 10/10.
+- 2026-07-11 (fix bug — F5 làm note đang xem bị scroll về đầu): `Editor.tsx` luôn destroy +
+  tạo mới `EditorView` mỗi khi `activePath` đổi (kể cả khi component remount do F5), với con trỏ
+  đặt ngay sau frontmatter và không có cơ chế lưu/khôi phục vị trí cuộn — `store.ts#PERSIST_KEYS`
+  chỉ lưu tab/activePath/viewMode… chứ không lưu scroll. **Sửa:** lưu `scrollTop` vào
+  `sessionStorage` theo từng path (debounce 150ms qua `EditorView.domEventHandlers({scroll})`),
+  khôi phục qua `requestAnimationFrame` khi `EditorView` được tạo. Vướng 1 race: sau F5, `content`
+  tải bất đồng bộ qua `hydrate()` nên effect đồng bộ nội dung ngoài ghi đè doc + reset selection
+  *sau* lần khôi phục đầu, xoá mất kết quả — sửa bằng cờ `scrollRestoredFor` (ref) để khôi phục
+  đúng một lần, ở effect nào thực sự có nội dung cuối cùng (tạo view nếu `content` đã có sẵn, hoặc
+  effect đồng bộ ngoài khi `content` tới sau). Đã verify bằng Playwright (Chromium headless) trên
+  dev server thật + sample-vault: cuộn note dài → F5 → giữ đúng `scrollTop`; chuyển qua note khác
+  và quay lại trong cùng phiên vẫn đúng vị trí riêng từng note; note khác không bị ảnh hưởng.
+  Typecheck sạch.
+- 2026-07-10: Phase 30 — Collapsible headings (Reading view). Phát hiện Reading view thực chất là
+  CM6 Live Preview read-only (không phải `Preview.tsx`), nên fold heading cài như StateField CM6
+  (`headingFoldDeco`) mirror callout-fold: chevron widget + block-replace ẩn section tới heading
+  cùng/cao cấp kế; derive từ localStorage mỗi build (key breadcrumb theo note), chỉ ở readonly.
+  Logic thuần + persist tách `web/src/lib/headingFold.ts` (+ `headingFoldControls` singleton cho
+  Collapse/Expand-all trong menu ⋯). `Preview.tsx` (split/mobile) có bản DOM tương đương. Thêm
+  Vitest (9 test: key breadcrumb + jsdom fold DOM). Verify Playwright headless server thật 12/12
+  (collapse "Ngày 3" ẩn tới "Ngày 4", persist reload, collapse/expand-all, callout không fold).
+  Build + typecheck sạch. Xem `docs/superpowers/specs/2026-07-10-collapsible-headings-design.md`.
+- 2026-07-10: M7.6 (PRD 1.8, FR-6) — Agent API `PATCH /api/v1/notes/{path}` hỗ trợ **find/replace
+  nguyên tử** phía server (contract chốt với MCP client): body `{find, replace, replaceAll?}` →
+  400 `invalid_body` (sai kiểu / `find` rỗng / có cả `find` lẫn `append`), 404 note không tồn tại,
+  409 `find_not_found` / `find_ambiguous`+count (≥2 khớp không `replaceAll:true`), thành công trả
+  `{ok, path, replaced}` + reindex. Logic tách thành hàm thuần `applyEdit`
+  (`server/src/services/noteedit.ts`) — literal string, indexOf + split/join, miễn nhiễm regex chars
+  trong `find` và bẫy `$&`/`$1`/`$$` trong `replace`; nhận field `find` bằng own-property check nên
+  body không có `find` (kể cả body mảng/rỗng) đi nguyên nhánh append cũ, không phá client cũ. Repo
+  chưa có test framework → viết TDD bằng script `server/scripts/verify-agent-edit.ts` (tsx): 12 unit
+  case cho `applyEdit` + 29 case e2e dựng server THẬT với vault/data dir tạm, seed API key, gọi HTTP
+  thật — chạy đỏ trước khi implement (18 fail đúng nhánh chưa có), xanh sau (42 passed / 0 failed),
+  gồm cả: append cũ giữ nguyên byte-level (kể cả quirk thêm `\n` khi append rỗng vào file không kết
+  thúc newline), search index thấy nội dung mới sau edit, key sai vẫn 401. Typecheck 2 workspace sạch.
+- 2026-07-08: Phase 29 (PRD 1.7, FR-14) — HTML Preview LLM-generated per-note. Note `.md` có thể có
+  nhiều bản HTML preview (Anthropic/OpenAI, template prompt tái sử dụng), gắn với note gốc + báo
+  out-of-sync qua sha256 hash, xử lý nền + polling (reload giữa lúc generate vẫn khôi phục đúng
+  trạng thái nhờ trạng thái ghi đĩa trước khi gọi LLM; server restart giữa chừng → job dở dang tự
+  thành error thay vì treo). Lưu trong `.html-preview/` ẩn trong vault (cùng quy ước `.trash`, không
+  cần sửa gì ở tree/search/link-index — chỉ thêm 1 entry vào regex ignore của watcher). Xem trong
+  tab riêng (`htmlpreview://<id>`, cùng pattern `graph://view`), `<iframe sandbox="allow-scripts">`
+  cách ly session app khỏi HTML do LLM sinh. Settings → AI: provider/API key (che sau khi lưu)/model
+  OpenAI/CRUD template. Verify: dùng API key thật (cả Anthropic lẫn OpenAI) qua iOS Simulator Safari
+  thật — tạo preview, reload đúng lúc đang generate vẫn khôi phục trạng thái + hoàn tất sau đó, badge
+  out-of-sync/regenerate, 2 preview độc lập trên cùng note, save-as-template, rename, delete (confirm
+  dialog), thiếu key báo lỗi rõ, `.html-preview/` không lộ ra file tree. Typecheck + build sạch.
+- 2026-07-06 (Phase 28 xong, verified): thiết kế chốt qua brainstorm → PRD 1.6 + kế hoạch Phase 28 → cài đặt
+  (`livePreview.ts`/`store.ts`/`Editor.tsx`) → phát hiện & sửa 2 lớp bug khi kiểm thử thật bằng Playwright
+  (CodeMirror ép `contentEditable=false` lên node widget gốc trả về từ `toDOM()`, và nested-contenteditable
+  bên trong `.cm-content` mất focus vào tay CM mỗi lần Mod-A dù đã `stopPropagation()` — cả hai được giải
+  quyết bằng cách chuyển sang `<input>` thật) → 7/7 kịch bản E2E pass → typecheck sạch. Tranh thủ dịp này sửa
+  luôn memory sai: `_deployment` (số ít, local) không phải prod — prod thật là droplet DigitalOcean
+  (`obsidian.henry-group.uk`), xem `~/Documents/Projects/_deployments/webobsidian-web.md`.
 - 2026-06-27 (security fix — leo thang quyền qua token share): `verifyToken()` (server/src/services/auth.ts)
   chỉ kiểm tra chữ ký nên **mọi** token ký bằng `auth.jwtSecret` đều được chấp nhận như phiên owner. Endpoint
   public `POST /public/shares/:id/unlock` ký unlock-cookie bằng cùng secret → người được chia sẻ (có mật khẩu
@@ -1284,3 +1479,26 @@ Cập nhật lần cuối: 2026-07-15 (bắt đầu Phase 28 — Share thư mụ
   icon globe màu accent cạnh tên. Icon `globe` thêm vào bộ Lucide. Verify headless Chrome qua CDP
   (MCP bị phiên khác giữ): badge hiện đúng note share + màu accent, menu có "Share…", dialog mở đủ
   controls (URL đúng token, toggle on, Set password…, Delete). Typecheck + build sạch.
+- 2026-07-07 (Fix search index không persist sau restart trên prod): người dùng báo search trên
+  droplet không tìm thấy note có thật (kể cả khớp tiêu đề chính xác), dù `GET /notes` đọc đúng nội
+  dung — bằng chứng mạnh: `_OLD/...` (di chuyển gần đây) vẫn bị search trả về ở đường dẫn **cũ**,
+  đúng khớp snapshot vault lúc build cuối 2026-06-28. Root cause (khác với fix 2026-06-11 ở trên —
+  lần đó là persist rỗng, lần này là **không persist**): `QmdEngine.upsert()`/`remove()`
+  (`server/src/services/search.ts`) chỉ cập nhật MiniSearch trong RAM, không bao giờ ghi
+  `data/qmd-index.json` — chỉ `build()` (full rebuild, dùng cho `/reindex` hoặc lúc boot khi
+  `restore()` thất bại) mới `persist()`. Mọi đường cập nhật tăng dần (agent API, UI file routes,
+  chokidar watcher theo dõi `git pull`/sửa ngoài) đều đi qua `upsert`/`remove`, nên **mọi thay đổi
+  vault từ sau lần build đầy đủ gần nhất bị mất khi container restart** (`restart: unless-stopped`
+  + redeploy `docker compose up -d --build`), dù note vẫn còn nguyên trên đĩa. Xác nhận trực tiếp
+  trên droplet trước khi sửa: `qmd-index.json` mtime = 28/06 06:30 trong khi hàng chục file `.md`
+  trong vault có mtime mới hơn nhiều (kể cả `_OLD/*`); `settings.json` cùng thư mục có mtime hôm
+  nay — chứng minh cơ chế ghi đĩa của `search-index` (khác `settings`) thực sự đứng yên từ 28/06.
+  Sửa: `upsert()`/`remove()` giờ gọi `schedulePersist()` — debounce 3s để gộp nhiều thay đổi liên
+  tiếp (autosave editor ~900ms, hoặc bão sự kiện chokidar khi `git pull`) thành 1 lần ghi đĩa thay vì
+  ghi mỗi lần; thêm `QmdEngine.flush()` + handler `SIGTERM`/`SIGINT` trong `index.ts` để ép ghi ngay
+  khi Docker dừng container (redeploy/restart), không đợi hết debounce. Verify: dựng server thật với
+  vault tạm, thêm note qua API, `kill -TERM` ngay lập tức (mô phỏng restart giữa chừng), khởi động
+  lại → search thấy note mới. Đối chứng: lùi code về bản cũ (`git stash`), lặp lại y hệt kịch bản →
+  search trả `hits: []` (tái hiện đúng bug), xác nhận fix giải quyết đúng root cause chứ không phải
+  trùng hợp. Typecheck 2 workspace sạch. Việc deploy fix này lên droplet prod (`159.65.128.188`) chờ
+  người dùng xác nhận trước khi restart service đang chạy vault thật.
