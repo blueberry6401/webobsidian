@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { Request } from 'express';
+import { promises as fs } from 'node:fs';
 import jwt from 'jsonwebtoken';
 import { asyncHandler } from '../middleware/error.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -148,7 +149,19 @@ export async function resolveInShareFolder(share: ShareRecord, subpath: string):
     return null;
   }
   const root = await vault.getVaultRoot();
-  const rel = vault.toRel(root, abs);
+  // Containment must be checked against the *realpath*, not the lexical path:
+  // vault.resolveInVault already rejects a symlink that escapes the vault entirely,
+  // but a symlink that lives inside the shared folder and points elsewhere *within*
+  // the vault would still lexically start with the shared folder's prefix. Resolving
+  // both sides through fs.realpath before comparing closes that gap.
+  let real: string;
+  let realRoot: string;
+  try {
+    [real, realRoot] = await Promise.all([fs.realpath(abs), fs.realpath(root).catch(() => root)]);
+  } catch {
+    return null; // target doesn't exist (or is unreadable) — nothing to serve
+  }
+  const rel = vault.toRel(realRoot, real);
   return withinShareFolder(share.path, rel) ? rel : null;
 }
 
@@ -248,8 +261,15 @@ publicSharesRouter.get(
     if (share.kind === 'folder') {
       // The whole folder was deliberately shared — any file inside it is servable,
       // not just embed targets (that allowlist is a file-kind-only restriction).
+      // .md/.markdown/.canvas are excluded: those render through the SSR /f
+      // note/canvas pipeline instead. Directories are excluded too — resolving a
+      // subfolder here is a valid, in-bounds path but not a file, and streaming a
+      // directory via createReadStream would hang the request (EISDIR).
       const resolved = await resolveInShareFolder(share, requested);
-      target = resolved && !isMd(resolved) ? resolved : null;
+      target =
+        resolved && !isMd(resolved) && !isCanvas(resolved) && !(await vault.isDirectory(resolved))
+          ? resolved
+          : null;
     } else {
       const resolved = await resolveVaultPath(requested);
       if (resolved && !isMd(resolved)) {
