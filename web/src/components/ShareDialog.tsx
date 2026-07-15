@@ -20,12 +20,13 @@ export default function ShareDialog() {
   }, [path, loadShares]);
 
   if (!path) return null;
+  const kind: 'file' | 'folder' = /\.(md|markdown|canvas)$/i.test(path) ? 'file' : 'folder';
   const close = () => setShareDialog(null);
   const share = shares.find((s) => s.path === path) ?? null;
   const url = share ? `${location.origin}/share/${share.id}` : '';
 
   const create = async () => {
-    await api.createShare(path);
+    await api.createShare(path, kind);
     await loadShares();
     notify('Public link created');
   };
@@ -37,6 +38,19 @@ export default function ShareDialog() {
   const copy = () => {
     navigator.clipboard?.writeText(url).catch(() => {});
     notify('Public link copied');
+  };
+  const EXPIRY_PRESETS: { label: string; days: number | null }[] = [
+    { label: '1 day', days: 1 },
+    { label: '7 days', days: 7 },
+    { label: '30 days', days: 30 },
+    { label: 'No limit', days: null },
+  ];
+  const setExpiry = async (days: number | null) => {
+    if (!share) return;
+    const iso = days === null ? null : new Date(Date.now() + days * 86_400_000).toISOString();
+    await api.setShareExpiry(share.id, iso);
+    await loadShares();
+    notify(days === null ? 'Link no longer expires' : `Link now expires in ${days} day${days === 1 ? '' : 's'}`);
   };
   const password = async () => {
     if (!share) return;
@@ -64,7 +78,9 @@ export default function ShareDialog() {
         <div className="share-dialog-head">
           <Icon name="globe" size={18} />
           <div>
-            <div className="share-dialog-title">{/\.canvas$/i.test(path) ? 'Share canvas' : 'Share note'}</div>
+            <div className="share-dialog-title">
+              {kind === 'folder' ? 'Share folder' : /\.canvas$/i.test(path) ? 'Share canvas' : 'Share note'}
+            </div>
             <div className="share-dialog-path">{path}</div>
           </div>
         </div>
@@ -96,6 +112,26 @@ export default function ShareDialog() {
               <div className="share-url">
                 <input className="text-input" readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
                 <button className="btn" onClick={copy}><Icon name="link" size={14} /> Copy</button>
+              </div>
+            )}
+
+            {share.enabled && (
+              <div className="setting-row">
+                <div className="info">
+                  <div className="name">Expiry</div>
+                  <div className="desc">
+                    {share.expiresAt ? `Expires ${new Date(share.expiresAt).toLocaleDateString()}` : 'Never expires'}
+                  </div>
+                </div>
+              </div>
+            )}
+            {share.enabled && (
+              <div className="recent-filter-row">
+                {EXPIRY_PRESETS.map((p) => (
+                  <button key={p.label} className="recent-filter-btn" onClick={() => setExpiry(p.days)}>
+                    {p.label}
+                  </button>
+                ))}
               </div>
             )}
 
