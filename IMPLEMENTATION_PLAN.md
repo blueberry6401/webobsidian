@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-06-27 (security fix — chặn leo thang quyền token share; merge fix F-03 rate-limit, giữ `trust proxy` mặc định bật)
+Cập nhật lần cuối: 2026-07-15 (bắt đầu Phase 28 — Share thư mục + Share có thời hạn, theo yêu cầu người dùng)
 
 ---
 
@@ -428,6 +428,24 @@ Cập nhật lần cuối: 2026-06-27 (security fix — chặn leo thang quyền
       GitHub Release draft, `GH_TOKEN`, `CSC_IDENTITY_AUTO_DISCOVERY=false`). `ci.yml` thêm typecheck + build
       bundle desktop. Root scripts `desktop`/`desktop:dist`/`desktop:publish`; `.gitignore` thêm `desktop/.gen`,
       `desktop/release`.
+
+## Phase 28 — Share thư mục + Share có thời hạn — FR-10, PRD 1.6 (theo yêu cầu người dùng)
+- [ ] M28.1 `ShareRecord` thêm `kind: 'file'|'folder'` (mặc định `'file'` khi đọc record cũ) và
+      `expiresAt?: string|null`. Service `shares.ts`: `isShareable` phân nhánh theo kind,
+      `createShare(path, kind)`, hàm trung tâm `getShareStatus(id)` trả `active|expired|not_found`
+      thay `getActiveShare()`.
+- [ ] M28.2 Route SSR `GET /share/:id/f/*subpath` (chỉ kind=folder): breadcrumb + liệt kê cây,
+      render note/canvas con, preview ảnh/video/audio, nút tải file khác — tất cả qua
+      `vault.resolveInVault` chống traversal. `GET /share/:id` phân nhánh file/folder. Trang
+      "Link đã hết hạn" riêng cho status=expired (SSR, noindex, không lộ path).
+- [ ] M28.3 `GET /public/shares/:id/file` mở allowlist cho kind=folder (mọi file trong phạm vi
+      thư mục, vẫn qua resolveInVault) — giữ nguyên allowlist cũ cho kind=file.
+- [ ] M28.4 API quản lý: `POST /api/shares` nhận `kind`; `PATCH /api/shares/:id` nhận `expiresAt`.
+- [ ] M28.5 UI: context menu thư mục có "Share…"; `ShareDialog` thêm 4 nút mốc thời hạn (1 ngày/
+      7 ngày/30 ngày/Không giới hạn) + hiển thị hạn hiện tại; badge globe áp dụng cho thư mục.
+- [ ] M28.6 Test: unit `getShareStatus`/allowlist folder/traversal; e2e thủ công tạo folder share
+      thật qua UI, duyệt vài cấp, mở note+ảnh con, đặt hạn 1 ngày và xác nhận hiển thị đúng.
+- [ ] M28.7 Deploy prod (droplet `obsidian.henry-group.uk`), verify sau deploy.
 
 ### Nhật ký tiến độ
 - 2026-06-27 (security fix — leo thang quyền qua token share): `verifyToken()` (server/src/services/auth.ts)
