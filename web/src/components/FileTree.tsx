@@ -317,6 +317,7 @@ function Node({ node, depth, visiblePaths }: { node: TreeNode; depth: number; vi
           { label: 'Move folder to…', onClick: doMove },
           { label: 'Copy path', onClick: copyPath },
           { label: 'Copy URL path', onClick: copyUrl },
+          { label: 'Share…', icon: 'globe', onClick: () => setShareDialog(node.path) },
           { label: '', separator: true },
           { label: 'Delete', danger: true, onClick: doDelete },
         ]
@@ -383,6 +384,9 @@ function Node({ node, depth, visiblePaths }: { node: TreeNode; depth: number; vi
             <RenameInput node={node} onDone={() => setRenamingPath(null)} />
           ) : (
             <span className="name">{node.name}</span>
+          )}
+          {shares.some((s) => s.path === node.path && s.enabled) && (
+            <Icon name="globe" size={12} className="share-globe" />
           )}
         </div>
         {open && (
