@@ -84,6 +84,13 @@ function page(opts: {
   noindex?: boolean;
   /** Skip the narrow markdown-preview column (used by the full-width canvas view). */
   bare?: boolean;
+  /**
+   * Folder-tree nav rendered as a persistent left column (pure HTML —
+   * <details>/<summary> gives expand/collapse with no client JS), so
+   * visitors can jump between files inside a shared folder without
+   * bouncing back to the listing page each time.
+   */
+  sidebar?: string;
 }): string {
   const inner = opts.bare
     ? opts.body
@@ -92,6 +99,12 @@ function page(opts: {
 ${opts.body}
 </div>
 </div>`;
+  const withSidebar = opts.sidebar
+    ? `<div class="public-folder-layout">
+<nav class="public-folder-nav">${opts.sidebar}</nav>
+<div class="public-folder-main">${inner}</div>
+</div>`
+    : inner;
   return `<!doctype html>
 <html lang="vi">
 <head>
@@ -102,8 +115,8 @@ ${opts.body}
 ${opts.head ?? ''}<style>${opts.css}</style>
 </head>
 <body>
-<div class="theme-light public-page${opts.bare ? ' public-canvas' : ''}">
-${inner}
+<div class="theme-light public-page${opts.bare ? ' public-canvas' : ''}${opts.sidebar ? ' has-folder-nav' : ''}">
+${withSidebar}
 </div>
 </body>
 </html>`;
@@ -175,6 +188,41 @@ function entryIcon(e: TreeNode): keyof typeof ICON_PATHS {
   if (IMAGE_EXT_RE.test(ext)) return 'image';
   if (ext === '.pdf') return 'file-pdf';
   return 'paperclip';
+}
+
+/** Recursively walk a folder share's subtree (bounded to the shared folder, not the whole vault). */
+async function buildFolderTree(rel: string, name: string): Promise<TreeNode> {
+  const entries = await vault.listDir(rel);
+  const children = await Promise.all(
+    entries.map((e) => (e.type === 'folder' ? buildFolderTree(e.path, e.name) : Promise.resolve(e))),
+  );
+  return { name, path: rel, type: 'folder', children };
+}
+
+/**
+ * Persistent left-column nav for every page inside a folder share — plain
+ * <details>/<summary> for expand/collapse (no client JS). Folders on the
+ * path to `currentRel` start expanded so the current location is visible;
+ * everything else starts collapsed to keep large shares manageable.
+ */
+function renderTreeNav(share: ShareRecord, node: TreeNode, currentRel: string): string {
+  if (node.type === 'file') {
+    const isCurrent = node.path === currentRel;
+    const href = `/share/${share.id}/f?path=${encodeURIComponent(toShareRel(share, node.path))}`;
+    const label = node.name.replace(/\.(md|markdown)$/i, '');
+    return `<li><a class="folder-nav-item${isCurrent ? ' is-current' : ''}" href="${href}">${svgIcon(entryIcon(node))}<span>${escapeHtml(label)}</span></a></li>`;
+  }
+  const isRoot = node.path === share.path;
+  const isAncestorOfCurrent = currentRel === node.path || currentRel.startsWith(`${node.path}/`);
+  const href = isRoot ? `/share/${share.id}` : `/share/${share.id}/f?path=${encodeURIComponent(toShareRel(share, node.path))}`;
+  const items = (node.children ?? []).map((c) => renderTreeNav(share, c, currentRel)).join('');
+  return `<li><details${isAncestorOfCurrent ? ' open' : ''}><summary><a class="folder-nav-item${node.path === currentRel ? ' is-current' : ''}" href="${href}">${svgIcon('folder')}<span>${escapeHtml(node.name)}</span></a></summary><ul>${items}</ul></details></li>`;
+}
+
+async function folderSidebar(share: ShareRecord, currentRel: string): Promise<string> {
+  const rootName = share.path.split('/').pop() ?? share.path;
+  const tree = await buildFolderTree(share.path, rootName);
+  return `<ul class="folder-nav-tree">${renderTreeNav(share, tree, currentRel)}</ul>`;
 }
 
 /** Breadcrumb for a path inside a folder share: root name, then each segment. */
@@ -296,12 +344,14 @@ sharePageRouter.get(
       const pageUrl = `${baseUrl(req)}/share/${share.id}`;
       const { desc, ogImage } = await folderMeta(share, share.path, req);
       const body = await folderListingBody(share, share.path);
+      const sidebar = await folderSidebar(share, share.path);
       res.send(
         page({
           title,
           noindex: true,
           css,
           head: ogHead({ pageUrl, title, desc, ogImage }),
+          sidebar,
           body: `<div class="inline-title">${escapeHtml(title)}</div>\n${body}`,
         }),
       );
@@ -375,12 +425,14 @@ sharePageRouter.get(
       const title = rel.split('/').pop() ?? rel;
       const { desc, ogImage } = await folderMeta(share, rel, req);
       const body = await folderListingBody(share, rel);
+      const sidebar = await folderSidebar(share, rel);
       res.send(
         page({
           title,
           noindex: true,
           css,
           head: ogHead({ pageUrl: subUrl, title, desc, ogImage }),
+          sidebar,
           body: `<div class="inline-title">${escapeHtml(title)}</div>\n${body}`,
         }),
       );
@@ -406,6 +458,9 @@ sharePageRouter.get(
       const ogImage = img?.url ?? (img?.vault ?? imgVault
         ? `${baseUrl(req)}/public/shares/${share.id}/file?path=${encodeURIComponent((img?.vault ?? imgVault) as string)}`
         : null);
+      // Canvas keeps the existing full-width, sidebar-free layout — it needs
+      // the horizontal space, unlike a note column.
+      const sidebar = isCv ? undefined : await folderSidebar(share, rel);
       res.send(
         page({
           title,
@@ -413,6 +468,7 @@ sharePageRouter.get(
           css,
           bare: isCv,
           head: ogHead({ pageUrl: subUrl, title, desc, ogType: 'article', ogImage }),
+          sidebar,
           body: `${breadcrumb(share, rel)}\n${
             isCv
               ? `<div class="public-canvas-title">${escapeHtml(title)}</div>\n${html}\n${canvasViewerScript(res.locals.cspNonce)}`
@@ -433,6 +489,7 @@ sharePageRouter.get(
           noindex: true,
           css,
           head: ogHead({ pageUrl: subUrl, title: name, desc: `Shared file — ${name}`, ogImage }),
+          sidebar: await folderSidebar(share, rel),
           body: mediaViewerBody(share, rel, name),
         }),
       );
@@ -445,6 +502,7 @@ sharePageRouter.get(
         noindex: true,
         css,
         head: ogHead({ pageUrl: subUrl, title: name, desc: `Shared file — ${name}` }),
+        sidebar: await folderSidebar(share, rel),
         body: downloadBody(share, rel, name),
       }),
     );
