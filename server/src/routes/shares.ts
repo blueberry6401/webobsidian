@@ -265,7 +265,21 @@ publicSharesRouter.get(
       // note/canvas pipeline instead. Directories are excluded too — resolving a
       // subfolder here is a valid, in-bounds path but not a file, and streaming a
       // directory via createReadStream would hang the request (EISDIR).
-      const resolved = await resolveInShareFolder(share, requested);
+      //
+      // `requested` is normally already share-root-relative (folder listing
+      // thumbnails/links, and the SSR media/download pages, all send that).
+      // But note/canvas content rendered inside a shared folder can also embed a
+      // bare basename (`![[photo.png]]`, resolved Obsidian-style against the
+      // whole vault, possibly outside this subfolder) — resolveInShareFolder
+      // alone would 404 that. Fall back to the same vault-wide resolution
+      // file-kind shares use, but re-check containment: resolveVaultPath's
+      // basename search is vault-wide, so without this the fallback could leak
+      // a same-named file from outside the shared folder.
+      let resolved = await resolveInShareFolder(share, requested);
+      if (!resolved) {
+        const fallback = await resolveVaultPath(requested);
+        resolved = fallback && withinShareFolder(share.path, fallback) ? fallback : null;
+      }
       target =
         resolved && !isMd(resolved) && !isCanvas(resolved) && !(await vault.isDirectory(resolved))
           ? resolved
