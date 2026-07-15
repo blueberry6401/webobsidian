@@ -5,7 +5,7 @@
 > Changelog 1.10 (FR-10 — Share thư mục + Share có thời hạn, theo yêu cầu người dùng): mở rộng
 > **FR-10** — share không còn giới hạn ở 1 note/canvas mà cho phép share **cả thư mục**, trang
 > public render dạng cây file browser read-only (SSR, điều hướng bằng load trang mới qua
-> `/share/{id}/f/{subpath}`, không phải SPA); file không phải note trong cây được preview
+> `/share/{id}/f?path=`, không phải SPA); file không phải note trong cây được preview
 > (ảnh/video/audio) hoặc cho tải về giống trải nghiệm xem trong app. Thêm **share có thời hạn**:
 > `ShareRecord` có `expiresAt?` (ISO timestamp), Share dialog có 4 nút mốc dựng sẵn — 1 ngày /
 > 7 ngày / 30 ngày / Không giới hạn; hết hạn → trang "Link đã hết hạn" riêng (không lộ tên
@@ -333,7 +333,7 @@ webobsidian/
     (`'file' | 'folder'`) phân biệt hai trường hợp.
   - **Share thư mục**: `GET /share/{id}` render trang cây thư mục read-only (folder trước, file
     sau, sắp xếp alphabet). Điều hướng vào thư mục con/note/file bằng route
-    `GET /share/{id}/f/{subpath}` — **SSR từng trang**, load lại trang khi chuyển mục (giữ đúng
+    `GET /share/{id}/f?path=` — **SSR từng trang**, load lại trang khi chuyển mục (giữ đúng
     triết lý "không cần JS để đọc" của share, không biến thành SPA). Note/canvas trong cây render
     y hệt pipeline share 1 file; ảnh/video/audio preview trực tiếp; các file khác hiện nút tải về.
     Toàn bộ resolve path đi qua cơ chế chống path-traversal đã dùng cho file nhúng hiện tại.
@@ -582,7 +582,7 @@ GET    /public/shares/{id}/file?path=  # file nhị phân — share file: chỉ 
 GET    /share/{id}                # trang HTML public — SERVER-RENDERED (SEO meta + OG + nội dung
                                   # note/cây thư mục gốc trong HTML; locked → form password
                                   # noindex; hết hạn → trang "Link đã hết hạn" noindex)
-GET    /share/{id}/f/{subpath}    # (chỉ kind=folder) SSR trang con: thư mục/note/file bên trong
+GET    /share/{id}/f?path=        # (chỉ kind=folder) SSR trang con: thư mục/note/file bên trong
                                   # thư mục đã share, điều hướng bằng load trang mới
 ```
 
