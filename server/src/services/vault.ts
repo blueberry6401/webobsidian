@@ -205,6 +205,39 @@ export async function exists(rel: string): Promise<boolean> {
   }
 }
 
+export async function isDirectory(rel: string): Promise<boolean> {
+  try {
+    const st = await fs.stat(await resolveInVault(rel));
+    return st.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** List the direct children of a vault-relative folder — one level, not recursive. */
+export async function listDir(rel: string): Promise<TreeNode[]> {
+  const root = await getVaultRoot();
+  const absDir = await resolveInVault(rel);
+  const entries = await fs.readdir(absDir, { withFileTypes: true });
+  const nodes = await Promise.all(
+    entries
+      .filter((e) => !(IGNORED.has(e.name) || e.name.startsWith('.')))
+      .map(async (e): Promise<TreeNode | null> => {
+        const abs = path.join(absDir, e.name);
+        const r = toRel(root, abs);
+        if (e.isDirectory()) return { name: e.name, path: r, type: 'folder' };
+        if (e.isFile()) return { name: e.name, path: r, type: 'file', ext: path.extname(e.name).toLowerCase() };
+        return null;
+      }),
+  );
+  const out = nodes.filter((n): n is TreeNode => n !== null);
+  out.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  return out;
+}
+
 export async function rename(from: string, to: string): Promise<void> {
   const absFrom = await resolveInVault(from);
   const absTo = await resolveInVault(to);
