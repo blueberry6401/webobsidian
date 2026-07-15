@@ -1,9 +1,10 @@
-import { useStore, GRAPH_PATH, type ContextMenuItem } from '../lib/store';
+import { useStore, GRAPH_PATH, isHtmlPreviewPath, htmlPreviewIdFromPath, type ContextMenuItem } from '../lib/store';
 import { api } from '../lib/api';
 import Editor from './Editor';
 import Preview from './Preview';
 import GraphView from './GraphView';
 import CanvasView from './CanvasView';
+import HtmlPreviewView from './HtmlPreviewView';
 import FolderView from './FolderView';
 import { isFolderPath } from '../lib/tree';
 import Icon from './Icon';
@@ -14,6 +15,7 @@ import { editorFind, getActiveEditor } from '../lib/activeEditor';
 import { triggerAddProperty } from '../lib/livePreview';
 import { pathToUrl } from '../lib/urlsync';
 import { VIDEO_EXT_RE, AUDIO_EXT_RE } from '../lib/media';
+import { getFoldControls } from '../lib/headingFoldControls';
 
 function EditorPane() {
   const activePath = useStore((s) => s.activePath);
@@ -83,6 +85,7 @@ export default function Workspace() {
   const setMovePath = useStore((s) => s.setMovePath);
   const setRightPanel = useStore((s) => s.setRightPanel);
   const setShareDialog = useStore((s) => s.setShareDialog);
+  const setHtmlPreviewDialog = useStore((s) => s.setHtmlPreviewDialog);
   const setVersionHistory = useStore((s) => s.setVersionHistory);
   const revealInTree = useStore((s) => s.revealInTree);
   const loadTree = useStore((s) => s.loadTree);
@@ -146,6 +149,15 @@ export default function Workspace() {
       ];
     } else {
       const sep: ContextMenuItem = { label: '', separator: true };
+      // Collapse/expand tất cả heading — chỉ có nghĩa ở Reading view.
+      const foldItems: ContextMenuItem[] =
+        isMd && viewMode === 'reading'
+          ? [
+              { label: 'Collapse all headings', icon: 'chevrons-down-up', onClick: () => getFoldControls()?.collapseAll() },
+              { label: 'Expand all headings', icon: 'chevrons-up-down', onClick: () => getFoldControls()?.expandAll() },
+              sep,
+            ]
+          : [];
       const renameItem: ContextMenuItem = {
         label: 'Rename…',
         icon: 'pencil',
@@ -179,6 +191,7 @@ export default function Workspace() {
         },
       };
       items = [
+        ...foldItems,
         ...(isMd ? [{ label: 'Backlinks in document', icon: 'link', onClick: () => setRightPanel('backlinks') }, sep] : []),
         ...(canSplit
           ? [
@@ -238,6 +251,7 @@ export default function Workspace() {
           },
         },
         ...(isShareable ? [{ label: 'Share…', icon: 'globe', onClick: () => setShareDialog(path) }] : []),
+        ...(isMd ? [{ label: 'HTML Preview…', icon: 'file-code', onClick: () => setHtmlPreviewDialog(path) }] : []),
         sep,
         ...tabItems,
         sep,
@@ -308,6 +322,9 @@ export default function Workspace() {
               {t.path === GRAPH_PATH && (
                 <Icon name="graph" size={13} style={{ marginRight: 4, flexShrink: 0 }} />
               )}
+              {isHtmlPreviewPath(t.path) && (
+                <Icon name="file-code" size={13} style={{ marginRight: 4, flexShrink: 0 }} />
+              )}
               <span className="title">{t.title.replace(/\.(md|markdown)$/, '')}</span>
               {dirty && activePath === t.path ? (
                 <span className="dot">●</span>
@@ -354,12 +371,14 @@ export default function Workspace() {
           <span className="crumbs">
             {activePath === GRAPH_PATH
               ? 'Graph view'
-              : activePath.split('/').map((seg, i) => (
-                  <span key={i}>
-                    {i > 0 && <span className="sep">/</span>}
-                    {seg.replace(/\.(md|markdown)$/, '')}
-                  </span>
-                ))}
+              : isHtmlPreviewPath(activePath)
+                ? (tabs.find((t) => t.path === activePath)?.title ?? 'HTML Preview')
+                : activePath.split('/').map((seg, i) => (
+                    <span key={i}>
+                      {i > 0 && <span className="sep">/</span>}
+                      {seg.replace(/\.(md|markdown)$/, '')}
+                    </span>
+                  ))}
           </span>
           <span className="grow" />
           {isMd && (
@@ -385,7 +404,7 @@ export default function Workspace() {
               </div>
             </>
           )}
-          {!activeIsFolder && (
+          {!activeIsFolder && !isHtmlPreviewPath(activePath) && (
             <button className="tool-btn" title="More options" onClick={openMoreMenu}>
               <Icon name="more-horizontal" size={18} />
             </button>
@@ -413,12 +432,17 @@ export default function Workspace() {
             <GraphView />
           </div>
         )}
-        {activePath && activePath !== GRAPH_PATH && activeIsFolder && (
+        {activePath && isHtmlPreviewPath(activePath) && (
+          <div className="pane main-pane">
+            <HtmlPreviewView previewId={htmlPreviewIdFromPath(activePath)} />
+          </div>
+        )}
+        {activePath && activePath !== GRAPH_PATH && !isHtmlPreviewPath(activePath) && activeIsFolder && (
           <div className="pane main-pane">
             <FolderView path={activePath} />
           </div>
         )}
-        {activePath && activePath !== GRAPH_PATH && !activeIsFolder && (
+        {activePath && activePath !== GRAPH_PATH && !isHtmlPreviewPath(activePath) && !activeIsFolder && (
           <div className="pane main-pane">
             <EditorPane />
           </div>

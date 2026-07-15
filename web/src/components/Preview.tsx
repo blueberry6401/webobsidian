@@ -6,6 +6,8 @@ import { useStore } from '../lib/store';
 import { renderMarkdown } from '../lib/markdown';
 import { calloutIconSvg } from '../lib/callouts';
 import { openLightbox } from '../lib/imageLightbox';
+import { setupHeadingFold } from '../lib/headingFoldDom';
+import { setFoldControls } from '../lib/headingFoldControls';
 import { api } from '../lib/api';
 
 /** Syntax-highlight a `<code class="language-x">` block with the SAME CodeMirror
@@ -127,6 +129,8 @@ export default function Preview({ source }: { source?: string }) {
     const root = bodyRef.current;
     if (!root) return;
     let cancelled = false;
+    // Collapsible headings (reading view only) — persist collapsed state per note.
+    setupHeadingFold(root, source ? null : activePath);
     for (const el of root.querySelectorAll<HTMLElement>('.callout-icon[data-callout-icon]')) {
       el.innerHTML = calloutIconSvg(el.dataset.calloutIcon ?? 'default');
     }
@@ -184,8 +188,9 @@ export default function Preview({ source }: { source?: string }) {
     }
     return () => {
       cancelled = true;
+      setFoldControls(null);
     };
-  }, [html]);
+  }, [html, activePath, source]);
 
   const onClick = (e: React.MouseEvent) => {
     // Click an embedded image → full-screen zoom/pan viewer.

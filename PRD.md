@@ -1,8 +1,8 @@
 # PRD — WebObsidian
 
 > Product Requirements Document
-> Phiên bản: 1.6 · Cập nhật: 2026-07-15 · Trạng thái: Draft
-> Changelog 1.6 (FR-10 — Share thư mục + Share có thời hạn, theo yêu cầu người dùng): mở rộng
+> Phiên bản: 1.10 · Cập nhật: 2026-07-15 · Trạng thái: Draft
+> Changelog 1.10 (FR-10 — Share thư mục + Share có thời hạn, theo yêu cầu người dùng): mở rộng
 > **FR-10** — share không còn giới hạn ở 1 note/canvas mà cho phép share **cả thư mục**, trang
 > public render dạng cây file browser read-only (SSR, điều hướng bằng load trang mới qua
 > `/share/{id}/f/{subpath}`, không phải SPA); file không phải note trong cây được preview
@@ -11,6 +11,33 @@
 > 7 ngày / 30 ngày / Không giới hạn; hết hạn → trang "Link đã hết hạn" riêng (không lộ tên
 > file/thư mục, giống hành vi không tồn tại). `ShareRecord` thêm field `kind: 'file'|'folder'`.
 > Chi tiết thiết kế: `docs/superpowers/specs/2026-07-15-share-folder-expiry-design.md`.
+> Changelog 1.9 (FR-15 — Quick filter tên file File Explorer + Recent 3-mode Opened/Created/
+> Modified, theo yêu cầu người dùng): xem chi tiết ở §3 FR-15.
+> Changelog 1.8 (FR-6 — Agent API: PATCH notes hỗ trợ find/replace nguyên tử, theo yêu cầu người dùng —
+> contract đã chốt với MCP client, không đổi): `PATCH /api/v1/notes/{path}` nhận thêm body
+> `{find, replace, replaceAll?}` để **sửa nội dung nguyên tử phía server** (đọc–đếm–thay–ghi trong 1
+> request, tránh race đọc/ghi 2 bước của agent). `find` là **literal string** (không regex), phải khác
+> rỗng; `replace` là string (được phép rỗng); sai kiểu / `find` rỗng / body có cả `find` lẫn `append`
+> → 400 `{error:"invalid_body"}`. Note không tồn tại → 404 `{error:"Not found"}`. Đếm số lần xuất
+> hiện: 0 → 409 `{error:"find_not_found"}`; ≥2 mà `replaceAll` không phải `true` → 409
+> `{error:"find_ambiguous", count}`; hợp lệ → thay (lần đầu tiên, hoặc tất cả nếu `replaceAll:true`),
+> ghi file + reindex, trả `{ok:true, path, replaced}`. Cài đặt bắt buộc dùng split/join (không đưa
+> `find`/`replace` vào `new RegExp()` hay pattern `$` đặc biệt của `String.replace`). Body **không có**
+> `find` → giữ nguyên 100% hành vi append cũ (kể cả thiếu `append` → append chuỗi rỗng) — không phá
+> client cũ. Logic thay thế tách thành hàm thuần `applyEdit` (`server/src/services/noteedit.ts`).
+> Changelog 1.7 (FR-14 — HTML Preview LLM-generated, theo yêu cầu người dùng): note `.md` có thể có
+> nhiều bản **HTML preview** sinh bởi LLM (Anthropic/OpenAI), gắn với note gốc (không phải export
+> tĩnh), báo **out-of-sync** khi note đổi, tạo lại được. Xử lý nền + polling (bấm Generate trả về
+> ngay, reload trang giữa chừng vẫn khôi phục đúng trạng thái). Lưu trong thư mục ẩn
+> `.html-preview/` trong vault (cùng quy ước ẩn với `.trash`). Xem trong tab riêng, iframe sandbox
+> cách ly session app. Settings mới nhóm `llm` (provider/API keys/model/template prompt CRUD).
+> Changelog 1.6 (FR-2 — Đổi tên file trực tiếp từ tiêu đề trong Live Preview, theo yêu cầu người dùng):
+> dòng tiêu đề (tên file) hiển thị đầu note trong **Live Preview** giờ **bấm-để-sửa** được — gõ tên mới,
+> Enter/blur để đổi tên file thật trên đĩa, Esc để huỷ. Ghi chú vẫn giữ nguyên tab đang mở, chỉ chuyển
+> sang trỏ tới đường dẫn mới (URL cập nhật theo), không bị đóng như cách rename qua Files panel. Chỉ áp
+> dụng ở Live Preview — Source mode không có ô tiêu đề riêng, Reading mode chỉ-đọc nên không sửa được.
+> Đuôi file giữ nguyên tự động; ký tự `/` bị loại khỏi tên mới (ô này chỉ đổi tên, không di chuyển
+> thư mục). Dùng lại endpoint `PATCH /api/files/rename` sẵn có.
 > Changelog 1.5 (FR-13 — Desktop app Electron đa nền tảng, theo yêu cầu người dùng): bổ sung **FR-13** —
 > đóng gói WebObsidian thành **app cài đặt** macOS/Windows/Linux (arm64/x64/ia32). Workspace mới `desktop/`
 > là **Electron shell** spawn đúng server Express hiện có như tiến trình con (qua `ELECTRON_RUN_AS_NODE`,
@@ -205,6 +232,10 @@ webobsidian/
   oga/opus`. `![[clip.mp4|W]]` đặt chiều rộng video. Mở thẳng file media từ file tree → hiện player.
   Binary serve qua HTTP Range (206) để seek/Safari hoạt động; MIME + extension: `services/mime.ts` /
   `lib/media.ts`.
+- **Đổi tên file từ tiêu đề (inline title) — chỉ Live Preview**: dòng tiêu đề đầu note (tên file, không
+  gồm đuôi) bấm-để-sửa được; Enter hoặc blur → gọi `PATCH /api/files/rename`, tab hiện tại chuyển sang
+  trỏ đường dẫn mới (không đóng tab); Esc huỷ, trả lại tên cũ. Tên trống hoặc giữ nguyên → bỏ qua; ký tự
+  `/` bị loại khỏi tên mới (không dùng để move file).
 - Backlinks panel, outline, tag pane.
 - Right sidebar dạng **tab strip icon** (giống Obsidian): Backlinks · Outgoing links · Tags · Outline.
   - Backlinks: "Linked mentions" (đếm + danh sách) **và** "Unlinked mentions" (note nhắc tên note hiện tại
@@ -256,7 +287,14 @@ webobsidian/
 ### FR-6 · API Gate (AI Agent)
 - Quản lý nhiều **API key** (tạo/thu hồi, scope: read / write / search).
 - REST endpoints `/api/v1/*` xác thực bằng header `Authorization: Bearer <key>` hoặc `X-API-Key`.
-- Năng lực: list notes, read note, create/update/delete note, search, get backlinks, append.
+- Năng lực: list notes, read note, create/update/delete note, search, get backlinks, append,
+  edit find/replace nguyên tử.
+- **Edit find/replace nguyên tử** (`PATCH /api/v1/notes/{path}`, body `{find, replace, replaceAll?}`):
+  server tự đọc–đếm–thay–ghi trong 1 request để agent không phải làm read-modify-write 2 bước (race).
+  `find` literal string khác rỗng (không regex), `replace` string (được phép rỗng). Lỗi:
+  400 `invalid_body` (sai kiểu / `find` rỗng / có cả `find` lẫn `append`), 404 note không tồn tại,
+  409 `find_not_found` (0 khớp), 409 `find_ambiguous` + `count` (≥2 khớp mà không `replaceAll:true`).
+  Thành công trả `{ok, path, replaced}`. Body không có `find` → append như cũ (tương thích ngược).
 - Rate limit + audit log mỗi key.
 
 ### FR-7 · QMD Search engine
@@ -434,6 +472,55 @@ Express + SPA hiện có (không fork code, không đổi kiến trúc) — nên
 - **Phạm vi (non-goals)**: chưa auto-update (người dùng tải bản mới thủ công); chưa ký số; không nhúng git
   portable; không chạy nhiều cửa sổ/vault song song trong 1 instance (single-instance lock).
 
+### FR-14 · HTML Preview (LLM-generated, per-note)
+Mục tiêu: cho phép tạo **bản xem trước HTML** cho một note `.md`, sinh bởi LLM (Anthropic Claude
+hoặc OpenAI) dựa trên nội dung note + một prompt hướng dẫn. Không phải export tĩnh 1-lần: HTML
+được gắn với note gốc, hiển thị trạng thái **out-of-sync** khi note đổi, và tạo lại được bất cứ
+lúc nào. Một note có thể có **nhiều bản preview** khác nhau (mỗi bản ứng với 1 prompt/template).
+
+- **Cấu hình LLM**: Settings → AI — chọn provider (Anthropic/OpenAI), API key riêng cho từng
+  provider (che sau khi lưu, giống token Git), model OpenAI có thể chỉnh (mặc định `gpt-4o`),
+  Anthropic luôn dùng alias Claude Sonnet mới nhất (không cho chỉnh). Danh sách **template prompt**
+  (tên + nội dung) quản lý CRUD ngay trong cùng trang.
+- **Trigger**: menu "⋯" của pane note đang mở (chỉ với file `.md`) → "HTML Preview…" → hộp thoại
+  liệt kê preview đã có (tên, trạng thái, out-of-sync), Rename/Delete từng dòng, "+ Tạo preview
+  mới" (chọn template có sẵn hoặc gõ prompt tuỳ ý, tuỳ chọn lưu thành template).
+- **Xử lý nền + polling**: bấm Generate trả về ngay bản ghi trạng thái `generating` (ghi đĩa trước
+  khi gọi LLM) — **reload trang giữa chừng vẫn khôi phục đúng trạng thái** (client poll lại). Server
+  khởi động lại giữa lúc đang generate → job dở dang tự chuyển `error` thay vì treo vĩnh viễn.
+- **Lưu trữ**: preview lưu trong thư mục ẩn `.html-preview/` ngay trong vault (cùng quy ước ẩn với
+  `.trash` — tự động không hiện trong file tree/search/link graph/watcher). Mỗi bản ghi gồm note
+  nào, tên, prompt/template dùng, trạng thái, "dấu vân tay" (hash) nội dung note tại lần tạo thành
+  công gần nhất (để tính out-of-sync).
+- **Xem preview**: mở trong tab riêng của app (sentinel path `htmlpreview://<id>`, giống cách
+  Graph view dùng `graph://view`), nội dung render trong `<iframe sandbox="allow-scripts">` (cách
+  ly khỏi cookie/session app — phòng LLM sinh mã độc hại). Badge trạng thái + nút "Tạo lại" ngay
+  trong tab.
+- **Phạm vi (non-goals) v1**: không share public bản preview (khác "Share…"); không áp dụng cho
+  `.canvas`.
+
+API mới: `GET/POST /api/html-preview`, `GET/POST /api/html-preview/{id}`, `POST
+/api/html-preview/{id}/regenerate`, `PATCH/DELETE /api/html-preview/{id}`. Settings mới nhóm `llm`
+(`provider`, `anthropicApiKey`, `openaiApiKey`, `openaiModel`, `templates[]`).
+
+### FR-15 · Quick filter tên file (File Explorer) & Recent theo Added/Modified
+Mục tiêu: vault nhiều note theo thời gian khiến khó tìm note gần đây hoặc note theo tên. Hai cải
+tiến độc lập cho sidebar trái:
+
+- **Quick filter tên file** (panel File Explorer): ô nhập ở đầu cây thư mục, gõ vào lọc ngay cây
+  file — ẩn file/folder không khớp, tự mở rộng folder chứa file khớp. So khớp chuẩn hóa: chữ
+  thường, bỏ dấu tiếng Việt (kể cả đ/Đ), bỏ khoảng trắng, kiểu "chứa chuỗi con", chỉ so theo tên
+  file (không theo path). Xóa ô nhập trả cây về đúng trạng thái mở/đóng trước đó.
+- **Panel Recent 3 chế độ**: thay panel "Recent" (chỉ note vừa mở, tối đa 20) bằng 3 chế độ toggle
+  — Opened (vừa mở, nay lưu tới 200 mục kèm thời điểm mở), Created (ngày tạo file, toàn vault),
+  Modified (ngày sửa file, toàn vault). 4 nút lọc nhanh theo khoảng thời gian dùng chung cho cả 3
+  chế độ: 1 week (mặc định) / 1 month / 3 months / All. "Remove from recent" trong menu chuột phải
+  chỉ hiện ở chế độ Opened (2 chế độ kia tự suy ra từ filesystem, không xóa thủ công được).
+
+Không đổi API server — cả hai tính năng dùng dữ liệu client đã có sẵn (cây file đã trả mtime/ctime
+từ Phase 29; workspace state `recent` đổi định dạng nhưng vẫn qua cùng endpoint `/api/uistate`
+không schema hoá phía server).
+
 ---
 
 ## 4. Yêu cầu phi chức năng (NFR)
@@ -504,7 +591,9 @@ GET    /share/{id}/f/{subpath}    # (chỉ kind=folder) SSR trang con: thư mụ
 GET    /api/v1/notes                 # list (paginate)
 GET    /api/v1/notes/{path}          # read
 PUT    /api/v1/notes/{path}          # create/update
-PATCH  /api/v1/notes/{path}/append   # append content
+PATCH  /api/v1/notes/{path}          # body {append} → append content;
+                                     # body {find, replace, replaceAll?} → find/replace nguyên tử
+                                     # (400 invalid_body · 404 · 409 find_not_found/find_ambiguous)
 DELETE /api/v1/notes/{path}
 GET    /api/v1/search?q=...&limit=
 GET    /api/v1/backlinks?path=

@@ -15,9 +15,21 @@ const TREE_SORTS: TreeSort[] = ['name-asc', 'name-desc', 'mtime-desc', 'mtime-as
 /** Sentinel tab path for the Graph view (it lives in a tab, like Obsidian). */
 export const GRAPH_PATH = 'graph://view';
 
+/** Sentinel tab path scheme for an HTML Preview tab (same pattern as GRAPH_PATH). */
+export const HTML_PREVIEW_PREFIX = 'htmlpreview://';
+export const isHtmlPreviewPath = (path: string): boolean => path.startsWith(HTML_PREVIEW_PREFIX);
+export const htmlPreviewTabPath = (id: string): string => `${HTML_PREVIEW_PREFIX}${id}`;
+export const htmlPreviewIdFromPath = (path: string): string => path.slice(HTML_PREVIEW_PREFIX.length);
+
 export interface Tab {
   path: string;
   title: string;
+}
+
+/** One entry in the "Opened" recent-files history: path + the timestamp it was last opened. */
+export interface RecentEntry {
+  path: string;
+  openedAt: number;
 }
 
 /** A color group in the graph (nodes matching `query` are tinted `color`). */
@@ -119,7 +131,7 @@ interface AppState {
   openToSide: (path: string, direction?: 'right' | 'down') => Promise<void>;
   closeSplit: () => void;
 
-  recent: string[];
+  recent: RecentEntry[];
   removeRecent: (path: string) => void;
   bookmarks: string[];
   toggleBookmark: (path: string) => void;
@@ -179,6 +191,11 @@ interface AppState {
   /** Note path whose Share dialog is open (null = closed). */
   shareDialogPath: string | null;
   setShareDialog: (path: string | null) => void;
+  /** Note path whose HTML Preview dialog is open (null = closed). */
+  htmlPreviewDialogPath: string | null;
+  setHtmlPreviewDialog: (path: string | null) => void;
+  /** Open (or focus) an HTML preview's tab, given its id + display title. */
+  openHtmlPreview: (id: string, title: string) => Promise<void>;
   /** Note path whose Version history modal is open (null = closed). */
   versionHistoryPath: string | null;
   setVersionHistory: (path: string | null) => void;
@@ -192,6 +209,12 @@ interface AppState {
   openFile: (path: string) => Promise<void>;
   openWikilink: (target: string) => Promise<void>;
   closeTab: (path: string) => void;
+  /**
+   * Rename the active note from its inline title: same folder, extension kept,
+   * `/` stripped from the new name. Unlike the Files-panel rename, this does NOT
+   * close the tab — the active tab and URL switch to the new path in place.
+   */
+  renameActiveNote: (newTitle: string) => Promise<void>;
   setContent: (c: string) => void;
   save: () => Promise<void>;
   createNote: (path: string, body?: string) => Promise<void>;
@@ -214,6 +237,8 @@ interface AppState {
 }
 
 const TEXT_RE = /\.(md|markdown|txt|json|csv|canvas|css|js|ya?ml)$/i;
+/** Max entries kept in the "Opened" recent-files history (raised from 20 so the 3-month range filter is meaningful). */
+const RECENT_CAP = 200;
 
 // ---- server-side workspace persistence (shared across browsers/devices) ----
 const PERSIST_KEYS = [
@@ -247,6 +272,15 @@ function migrateGraphSettings(gs: unknown): GraphSettings {
   return merged;
 }
 
+/** Legacy `recent` was `string[]`; migrate entries to `{path, openedAt}` (openedAt=0 sorts to the bottom under "All"). */
+function migrateRecent(raw: unknown): RecentEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((e) => (typeof e === 'string' ? { path: e, openedAt: 0 } : e))
+    .filter((e): e is RecentEntry => !!e && typeof e === 'object' && typeof (e as any).path === 'string' && typeof (e as any).openedAt === 'number')
+    .slice(0, RECENT_CAP);
+}
+
 function applyPersisted(s: any, set: (p: any) => void): void {
   set({
     tabs: Array.isArray(s.tabs) ? s.tabs : [],
@@ -257,7 +291,7 @@ function applyPersisted(s: any, set: (p: any) => void): void {
     autoReveal: s.autoReveal === true,
     splitPath: typeof s.splitPath === 'string' ? s.splitPath : null,
     splitDirection: s.splitDirection === 'down' ? 'down' : 'right',
-    recent: Array.isArray(s.recent) ? s.recent : [],
+    recent: migrateRecent(s.recent),
     bookmarks: Array.isArray(s.bookmarks) ? s.bookmarks : [],
     leftPanel: ['files', 'search', 'tags', 'bookmarks'].includes(s.leftPanel) ? s.leftPanel : 'files',
     rightPanel: ['backlinks', 'outgoing', 'tags', 'outline'].includes(s.rightPanel) ? s.rightPanel : 'backlinks',
@@ -371,7 +405,7 @@ export const useStore = create<AppState>()(
       closeSplit: () => set({ splitPath: null, splitContent: '' }),
 
       recent: [],
-      removeRecent: (path) => set((s) => ({ recent: s.recent.filter((p) => p !== path) })),
+      removeRecent: (path) => set((s) => ({ recent: s.recent.filter((e) => e.path !== path) })),
       movePath: null,
       setMovePath: (path) => set({ movePath: path }),
 
@@ -445,6 +479,19 @@ export const useStore = create<AppState>()(
       },
       shareDialogPath: null,
       setShareDialog: (path) => set({ shareDialogPath: path }),
+      htmlPreviewDialogPath: null,
+      setHtmlPreviewDialog: (path) => set({ htmlPreviewDialogPath: path }),
+      openHtmlPreview: async (id, title) => {
+        if (get().dirty) await get().save();
+        const path = htmlPreviewTabPath(id);
+        set((s) => ({
+          tabs: s.tabs.some((t) => t.path === path) ? s.tabs : [...s.tabs, { path, title }],
+          activePath: path,
+          content: '',
+          dirty: false,
+          ...pushHistory(s, path),
+        }));
+      },
       versionHistoryPath: null,
       setVersionHistory: (path) => set({ versionHistoryPath: path }),
       revealInTree: (path) => {
@@ -478,6 +525,11 @@ export const useStore = create<AppState>()(
 
       openFile: async (path) => {
         if (path === GRAPH_PATH) return get().openGraph();
+        if (isHtmlPreviewPath(path)) {
+          if (get().dirty) await get().save();
+          set((s) => ({ activePath: path, content: '', dirty: false, ...pushHistory(s, path) }));
+          return;
+        }
         if (get().dirty) await get().save();
         // A folder path (e.g. deep-link /note/<folder>) opens a folder content
         // view — never read it as a note nor pollute Recent with it.
@@ -490,7 +542,9 @@ export const useStore = create<AppState>()(
         const title = path.split('/').pop() ?? path;
         set((s) => {
           const tabs = s.tabs.find((t) => t.path === path) ? s.tabs : [...s.tabs, { path, title }];
-          const recent = isFolder ? s.recent : [path, ...s.recent.filter((p) => p !== path)].slice(0, 20);
+          const recent = isFolder
+            ? s.recent
+            : [{ path, openedAt: Date.now() }, ...s.recent.filter((e) => e.path !== path)].slice(0, RECENT_CAP);
           return { tabs, activePath: path, content, dirty: false, recent, ...pushHistory(s, path) };
         });
       },
@@ -518,6 +572,30 @@ export const useStore = create<AppState>()(
           const activePath = wasActive ? (tabs.at(-1)?.path ?? null) : s.activePath;
           return { tabs, activePath, ...(wasActive ? { content: '', dirty: false } : {}) };
         }),
+
+      renameActiveNote: async (newTitle) => {
+        const { activePath } = get();
+        if (!activePath) return;
+        const slash = activePath.lastIndexOf('/');
+        const dir = slash < 0 ? '' : activePath.slice(0, slash);
+        const ext = activePath.match(/\.(md|markdown)$/i)?.[0] ?? '.md';
+        const clean = newTitle.replace(/\//g, '').trim();
+        if (!clean) return;
+        const name = `${clean}${ext}`;
+        const to = dir ? `${dir}/${name}` : name;
+        if (to === activePath) return;
+        try {
+          await api.rename(activePath, to);
+        } catch (e: any) {
+          get().notify(e?.message ?? 'Rename failed');
+          return;
+        }
+        set((s) => ({
+          tabs: s.tabs.map((t) => (t.path === activePath ? { path: to, title: name } : t)),
+          activePath: to,
+        }));
+        await get().loadTree();
+      },
 
       setContent: (c) => set({ content: c, dirty: true }),
 
