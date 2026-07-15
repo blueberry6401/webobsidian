@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-15 (Phase 33 — Share thư mục + Share có thời hạn: xong, đã merge vào main + deploy prod, verify healthz/commit/log sạch)
+Cập nhật lần cuối: 2026-07-15 (Phase 33 — fix giao diện trang folder share theo phản hồi người dùng: thêm icon + khung, đã deploy prod)
 
 ---
 
@@ -554,6 +554,22 @@ Cập nhật lần cuối: 2026-07-15 (Phase 33 — Share thư mục + Share có
 - [x] M33.7 Deploy prod (droplet `obsidian.henry-group.uk`), verify sau deploy.
 
 ### Nhật ký tiến độ
+- 2026-07-15 (Phase 33 — fix giao diện trang folder share, theo phản hồi người dùng sau khi tự tay
+  mở link share thật trên prod): trang liệt kê thư mục public thiếu icon phân biệt folder/note/file
+  và không có khung/viền — nhìn "trống trải" so với trải nghiệm trong app. Thêm hàm `svgIcon`/
+  `entryIcon` trong `sharepage.ts`, inline đúng bộ path SVG Lucide + logic map loại file y hệt
+  `FolderView.tsx` (không có React runtime ở SSR nên nhúng SVG string trực tiếp thay vì dùng
+  component `Icon`). CSS mới scope riêng `.public-page .folder-list`/`.folder-entry` (viền, bo góc,
+  đường phân cách giữa các dòng) — không đụng `.folder-list`/`.folder-entry` dùng chung trong app để
+  tránh vỡ giao diện FolderView đang có. Verify: build xong chạy `node dist/index.js` (bản production
+  thật, không phải dev server) với vault fixture có folder con + note + ảnh, tạo share thật qua API,
+  `curl` HTML trả về xác nhận cả icon SVG lẫn CSS mới đều có mặt đúng vị trí trước khi deploy. Deploy
+  lần này chạy `ssh` **đồng bộ** (không chạy nền) để tránh lặp lại sự cố lần deploy trước: chạy nền
+  qua `run_in_background` khiến agent nhận thông báo "completed exit code 0" trong khi Docker build
+  thật trên droplet vẫn đang chạy — dẫn tới báo cáo sai "chưa xong" kéo dài nhiều phút dù thực tế đã
+  xong từ trước, thêm việc dùng script polling tự viết bị lỗi định dạng ngày giờ nên không phát hiện
+  được container mới đã "Up". Deploy lần 2 verify: `git log -1` khớp commit, container "healthy" ngay
+  sau khi lệnh trả về, `healthz` OK qua cả nội bộ lẫn HTTPS công khai.
 - 2026-07-15 (Phase 33 M33.8 — fix 6 phát hiện whole-branch review trước merge/deploy): quan trọng
   nhất là lỗ hổng treo request — endpoint `/public/shares/:id/file` (kind=folder) nhận `?path=` trỏ
   vào thư mục con vẫn qua được check `isMd`, rồi `createReadStream` trên thư mục ném `EISDIR` không
