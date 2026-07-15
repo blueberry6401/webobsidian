@@ -8,16 +8,20 @@ import { resolveFile } from '../services/fileindex.js';
 import { hashPassword, verifyPassword } from '../services/auth.js';
 import { getSettings } from '../services/settings.js';
 import {
-  listShares, createShare, setShareEnabled, setSharePassword, deleteShare, getActiveShare,
-  type ShareRecord,
+  listShares, createShare, setShareEnabled, setSharePassword, setShareExpiry, deleteShare,
+  getShareStatus, withinShareFolder, type ShareRecord,
 } from '../services/shares.js';
 import { canvasEmbedTargets } from '../services/rendercanvas.js';
 import { mimeFor } from '../services/mime.js';
 import { sendFileWithRange } from '../services/httpfile.js';
 
-const isMd = (p: string) => /\.(md|markdown)$/i.test(p);
-const isCanvas = (p: string) => /\.canvas$/i.test(p);
-const isShareable = (p: string) => isMd(p) || isCanvas(p);
+export const isMd = (p: string) => /\.(md|markdown)$/i.test(p);
+export const isCanvas = (p: string) => /\.canvas$/i.test(p);
+
+async function isShareable(p: string, kind: 'file' | 'folder'): Promise<boolean> {
+  if (kind === 'folder') return vault.isDirectory(p);
+  return isMd(p) || isCanvas(p);
+}
 
 /** Never send the password hash to the client — expose `hasPassword` only. */
 function redact(rec: ShareRecord) {
@@ -41,38 +45,46 @@ sharesRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     const rel = String(req.body?.path ?? '');
-    if (!rel || !isShareable(rel)) {
-      res.status(400).json({ error: 'path to a .md or .canvas note required' });
+    const kind: 'file' | 'folder' = req.body?.kind === 'folder' ? 'folder' : 'file';
+    if (!rel || !(await isShareable(rel, kind))) {
+      res.status(400).json({
+        error: kind === 'folder' ? 'path to an existing folder required' : 'path to a .md or .canvas note required',
+      });
       return;
     }
-    if (!(await vault.exists(rel))) {
-      res.status(404).json({ error: 'note not found' });
-      return;
-    }
-    res.json({ share: redact(await createShare(rel)) });
+    res.json({ share: redact(await createShare(rel, kind)) });
   }),
 );
 
-// Update a share: { enabled?: boolean, password?: string | null }.
+// Update a share: { enabled?: boolean, password?: string | null, expiresAt?: string | null }.
 // password: non-empty string sets it (scrypt-hashed); null/'' removes it.
+// expiresAt: ISO timestamp sets it; null removes it (share never expires).
 sharesRouter.patch(
   '/:id',
   asyncHandler(async (req, res) => {
-    const { enabled, password } = req.body ?? {};
+    const { enabled, password, expiresAt } = req.body ?? {};
     const hasEnabled = typeof enabled === 'boolean';
     const hasPassword = password !== undefined;
-    if (!hasEnabled && !hasPassword) {
-      res.status(400).json({ error: 'enabled (boolean) or password (string|null) required' });
+    const hasExpiresAt = expiresAt !== undefined;
+    if (!hasEnabled && !hasPassword && !hasExpiresAt) {
+      res.status(400).json({ error: 'enabled, password, or expiresAt required' });
       return;
     }
     if (hasPassword && password !== null && typeof password !== 'string') {
       res.status(400).json({ error: 'password must be a string or null' });
       return;
     }
+    if (hasExpiresAt && expiresAt !== null && Number.isNaN(Date.parse(expiresAt))) {
+      res.status(400).json({ error: 'expiresAt must be an ISO date string or null' });
+      return;
+    }
     let rec = hasEnabled ? await setShareEnabled(req.params.id, enabled) : null;
     if (hasPassword) {
       const hash = password ? await hashPassword(password) : null;
       rec = await setSharePassword(req.params.id, hash);
+    }
+    if (hasExpiresAt) {
+      rec = await setShareExpiry(req.params.id, expiresAt);
     }
     if (!rec) {
       res.status(404).json({ error: 'share not found' });
@@ -97,9 +109,8 @@ sharesRouter.delete(
 /** ---- Public API (NO auth) — /public/shares ------------------------------- */
 
 /**
- * Files the shared note embeds (`![[target]]` and `![](relative-url)`) — the
- * only paths the public file endpoint is allowed to serve. Mirrors the
- * client-side markdown preprocessing in web/src/lib/markdown.ts.
+ * Files a file-kind shared note embeds (`![[target]]` and `![](relative-url)`) —
+ * the only paths the public file endpoint may serve for that share.
  */
 function embedTargets(content: string): string[] {
   const out = new Set<string>();
@@ -109,7 +120,6 @@ function embedTargets(content: string): string[] {
   }
   for (const m of content.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)) {
     const url = m[1].replace(/\s+"[^"]*"$/, '').trim();
-    // web-loadable URLs are loaded directly by the browser, not via the vault
     if (url && !/^(https?|data|blob|file):/i.test(url)) {
       out.add(decodeURIComponent(url.split('/').pop() || url));
     }
@@ -121,6 +131,25 @@ function embedTargets(content: string): string[] {
 async function resolveVaultPath(rel: string): Promise<string | null> {
   if (await vault.exists(rel)) return rel;
   return resolveFile(rel) ?? null;
+}
+
+/**
+ * Resolve `subpath` against a folder-kind share's root, refusing anything
+ * outside `share.path`. Returns the vault-relative path, or null if the
+ * resolved target escapes the shared folder (or doesn't exist).
+ */
+export async function resolveInShareFolder(share: ShareRecord, subpath: string): Promise<string | null> {
+  const clean = subpath.replace(/^\/+/, '');
+  const targetRel = clean ? `${share.path}/${clean}` : share.path;
+  let abs: string;
+  try {
+    abs = await vault.resolveInVault(targetRel);
+  } catch {
+    return null;
+  }
+  const root = await vault.getVaultRoot();
+  const rel = vault.toRel(root, abs);
+  return withinShareFolder(share.path, rel) ? rel : null;
 }
 
 export const publicSharesRouter = Router();
@@ -150,8 +179,13 @@ export async function isUnlocked(req: Request, share: ShareRecord): Promise<bool
 publicSharesRouter.post(
   '/:id/unlock',
   asyncHandler(async (req, res) => {
-    const share = await getActiveShare(req.params.id);
-    if (!share || !share.passwordHash) {
+    const status = await getShareStatus(req.params.id);
+    if (status.status !== 'active') {
+      res.status(404).json({ error: 'not found' });
+      return;
+    }
+    const share = status.record;
+    if (!share.passwordHash) {
       res.status(404).json({ error: 'not found' });
       return;
     }
@@ -166,7 +200,7 @@ publicSharesRouter.post(
       algorithm: 'HS256',
     });
     // Path '/' so both /public/shares/<id>/* (content, files) AND the SSR page
-    // at /share/<id> receive it. The JWT is bound to this share id only.
+    // at /share/<id>[/f] receive it. The JWT is bound to this share id only.
     res.cookie(unlockCookie(share.id), token, {
       httpOnly: true,
       sameSite: 'lax',
@@ -180,11 +214,12 @@ publicSharesRouter.post(
 publicSharesRouter.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const share = await getActiveShare(req.params.id);
-    if (!share || !(await vault.exists(share.path))) {
+    const status = await getShareStatus(req.params.id);
+    if (status.status !== 'active' || status.record.kind !== 'file' || !(await vault.exists(status.record.path))) {
       res.status(404).json({ error: 'not found' });
       return;
     }
+    const share = status.record;
     if (!(await isUnlocked(req, share))) {
       res.status(401).json({ error: 'password required', passwordRequired: true });
       return;
@@ -198,30 +233,38 @@ publicSharesRouter.get(
 publicSharesRouter.get(
   '/:id/file',
   asyncHandler(async (req, res) => {
-    const share = await getActiveShare(req.params.id);
+    const status = await getShareStatus(req.params.id);
     const requested = String(req.query.path ?? '');
-    if (!share || !requested || !(await vault.exists(share.path))) {
+    if (status.status !== 'active' || !requested || !(await vault.exists(status.record.path))) {
       res.status(404).json({ error: 'not found' });
       return;
     }
+    const share = status.record;
     if (!(await isUnlocked(req, share))) {
       res.status(401).json({ error: 'password required', passwordRequired: true });
       return;
     }
-    const target = await resolveVaultPath(requested);
-    if (!target || isMd(target)) {
-      res.status(404).json({ error: 'not found' });
-      return;
+    let target: string | null = null;
+    if (share.kind === 'folder') {
+      // The whole folder was deliberately shared — any file inside it is servable,
+      // not just embed targets (that allowlist is a file-kind-only restriction).
+      const resolved = await resolveInShareFolder(share, requested);
+      target = resolved && !isMd(resolved) ? resolved : null;
+    } else {
+      const resolved = await resolveVaultPath(requested);
+      if (resolved && !isMd(resolved)) {
+        // Allowlist check: the resolved file must be one the shared note/canvas embeds.
+        const content = await vault.readFileText(share.path);
+        const targets = isCanvas(share.path) ? await canvasEmbedTargets(content) : embedTargets(content);
+        const allowed = new Set<string>();
+        for (const t of targets) {
+          const r = await resolveVaultPath(t);
+          if (r) allowed.add(r);
+        }
+        if (allowed.has(resolved)) target = resolved;
+      }
     }
-    // Allowlist check: the resolved file must be one the shared note/canvas embeds.
-    const content = await vault.readFileText(share.path);
-    const targets = isCanvas(share.path) ? await canvasEmbedTargets(content) : embedTargets(content);
-    const allowed = new Set<string>();
-    for (const t of targets) {
-      const r = await resolveVaultPath(t);
-      if (r) allowed.add(r);
-    }
-    if (!allowed.has(target)) {
+    if (!target) {
       res.status(404).json({ error: 'not found' });
       return;
     }
