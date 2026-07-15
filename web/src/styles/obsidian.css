@@ -1063,7 +1063,7 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .public-breadcrumb { display: flex; flex-wrap: wrap; gap: 4px; color: var(--text-muted); font-size: 13px; margin-bottom: 14px; }
 .public-breadcrumb a { color: var(--text-muted); text-decoration: none; }
 .public-breadcrumb a:hover { color: var(--text-normal); text-decoration: underline; }
-.public-breadcrumb span { color: var(--text-normal); }
+.public-breadcrumb span:not(.public-breadcrumb-sep) { color: var(--text-normal); }
 .public-breadcrumb-sep { color: var(--text-faint); }
 
 .public-file-view { display: flex; justify-content: center; padding: 20px 0; }

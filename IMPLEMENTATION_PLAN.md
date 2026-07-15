@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-15 (đồng bộ fork/main tới Phase 32; bắt đầu Phase 33 — Share thư mục + Share có thời hạn, theo yêu cầu người dùng)
+Cập nhật lần cuối: 2026-07-15 (Phase 33 — Share thư mục + Share có thời hạn: xong, đã fix xong đợt review whole-branch cuối cùng, sẵn sàng merge/deploy)
 
 ---
 
@@ -522,25 +522,51 @@ Cập nhật lần cuối: 2026-07-15 (đồng bộ fork/main tới Phase 32; b�
       `vitest` sạch.
 
 ## Phase 33 — Share thư mục + Share có thời hạn — FR-10, PRD 1.10 (theo yêu cầu người dùng)
-- [ ] M33.1 `ShareRecord` thêm `kind: 'file'|'folder'` (mặc định `'file'` khi đọc record cũ) và
+- [x] M33.1 `ShareRecord` thêm `kind: 'file'|'folder'` (mặc định `'file'` khi đọc record cũ) và
       `expiresAt?: string|null`. Service `shares.ts`: `isShareable` phân nhánh theo kind,
       `createShare(path, kind)`, hàm trung tâm `getShareStatus(id)` trả `active|expired|not_found`
       thay `getActiveShare()`.
-- [ ] M33.2 Route SSR `GET /share/:id/f?path=` (chỉ kind=folder): breadcrumb + liệt kê cây,
+- [x] M33.2 Route SSR `GET /share/:id/f?path=` (chỉ kind=folder): breadcrumb + liệt kê cây,
       render note/canvas con, preview ảnh/video/audio, nút tải file khác — tất cả qua
       `vault.resolveInVault` chống traversal. `GET /share/:id` phân nhánh file/folder. Trang
       "Link đã hết hạn" riêng cho status=expired (SSR, noindex, không lộ path).
-- [ ] M33.3 `GET /public/shares/:id/file` mở allowlist cho kind=folder (mọi file trong phạm vi
+- [x] M33.3 `GET /public/shares/:id/file` mở allowlist cho kind=folder (mọi file trong phạm vi
       thư mục, vẫn qua resolveInVault) — giữ nguyên allowlist cũ cho kind=file.
-- [ ] M33.4 API quản lý: `POST /api/shares` nhận `kind`; `PATCH /api/shares/:id` nhận `expiresAt`.
-- [ ] M33.5 UI: context menu thư mục có "Share…"; `ShareDialog` thêm 4 nút mốc thời hạn (1 ngày/
+- [x] M33.4 API quản lý: `POST /api/shares` nhận `kind`; `PATCH /api/shares/:id` nhận `expiresAt`.
+- [x] M33.5 UI: context menu thư mục có "Share…"; `ShareDialog` thêm 4 nút mốc thời hạn (1 ngày/
       7 ngày/30 ngày/Không giới hạn) + hiển thị hạn hiện tại; badge globe áp dụng cho thư mục.
-- [ ] M33.6 Test: unit Vitest (`server/`, workspace mới) cho `getShareStatus`/allowlist folder/
+- [x] M33.6 Test: unit Vitest (`server/`, workspace mới) cho `getShareStatus`/allowlist folder/
       traversal; e2e thủ công tạo folder share thật qua UI, duyệt vài cấp, mở note+ảnh con, đặt
       hạn 1 ngày và xác nhận hiển thị đúng.
+- [x] M33.8 Fix 6 phát hiện từ whole-branch review cuối (trước merge/deploy): (1) endpoint nhị phân
+      folder-share có thể trỏ vào thư mục con → `createReadStream` treo request (EISDIR) — chặn
+      bằng `vault.isDirectory` trước khi stream; (2) cùng endpoint lộ `.canvas` thô — thêm loại trừ
+      `isCanvas` giống `isMd`; (3) `resolveInShareFolder` chỉ kiểm containment trên path lexical —
+      symlink trong thư mục share trỏ ra ngoài phạm vi share (nhưng vẫn trong vault) lọt qua; sửa
+      bằng kiểm tra trên realpath (`fs.realpath`) trước khi so `withinShareFolder`, không đụng
+      `vault.ts`; (4) `ShareDialog` copy còn cứng "note" khi share thư mục; (5) PRD.md mô tả sai
+      scope cookie unlock (`/public/shares/{id}` thay vì thực tế `path: '/'`); (6) CSS
+      `.public-breadcrumb span` đè màu `.public-breadcrumb-sep` do specificity cao hơn. Verify: 11/11
+      Vitest xanh, typecheck server+web sạch, và tái hiện trực tiếp trên dev server thật (tạo folder
+      share có subfolder + `.canvas`, `curl ?path=<subfolder>` trả 404 nhanh (không treo),
+      `curl ?path=<file>.canvas` trả 404 (không lộ JSON thô); trang SSR `/f` (root + subfolder) vẫn
+      hoạt động đúng sau khi đổi `resolveInShareFolder` sang realpath.
 - [ ] M33.7 Deploy prod (droplet `<production-domain>`), verify sau deploy.
 
 ### Nhật ký tiến độ
+- 2026-07-15 (Phase 33 M33.8 — fix 6 phát hiện whole-branch review trước merge/deploy): quan trọng
+  nhất là lỗ hổng treo request — endpoint `/public/shares/:id/file` (kind=folder) nhận `?path=` trỏ
+  vào thư mục con vẫn qua được check `isMd`, rồi `createReadStream` trên thư mục ném `EISDIR` không
+  ai bắt → socket treo vô thời hạn, bất kỳ khách ẩn danh nào cũng gọi được. Sửa bằng
+  `vault.isDirectory` (đã có sẵn từ M33.1) trước khi stream; tiện thể chặn luôn `.canvas` thô (lộ
+  JSON chưa qua pipeline render) và siết `resolveInShareFolder` sang kiểm containment bằng
+  `fs.realpath` (chặn symlink trong thư mục share trỏ ra thư mục khác cùng vault). 3 fix nhỏ còn lại:
+  copy `ShareDialog` nói "note" khi đang share thư mục, PRD.md mô tả sai scope cookie unlock
+  (`path: '/'` thực tế chứ không phải `/public/shares/{id}`), và CSS breadcrumb separator bị đè màu
+  do specificity. Verify: 11/11 Vitest + typecheck server/web sạch; tái hiện trực tiếp trên dev
+  server thật với vault fixture có subfolder + `.canvas` — `curl ?path=<subfolder>` trả 404 nhanh
+  (trước đây sẽ treo), `curl ?path=<file>.canvas` trả 404 thay vì JSON thô, trang SSR `/f` vẫn hoạt
+  động bình thường sau khi đổi sang realpath.
 - 2026-07-14 (Phase 32 — Quick filter tên file + Recent theo Added/Modified, theo yêu cầu người
   dùng): vault nhiều note khiến khó tìm note gần đây/theo tên. (1) File Explorer thêm ô filter tên
   file đầu panel (`web/src/lib/normalize.ts#matchesQuery`) — chuẩn hoá bỏ dấu tiếng Việt (kể cả

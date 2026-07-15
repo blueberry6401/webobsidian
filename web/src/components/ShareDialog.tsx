@@ -88,7 +88,7 @@ export default function ShareDialog() {
         {!share && (
           <>
             <p className="share-dialog-hint">
-              Create a public link so <b>anyone with the URL</b> can read this note without login.
+              Create a public link so <b>anyone with the URL</b> can read this {kind === 'folder' ? 'folder' : 'note'} without login.
             </p>
             <button className="btn" onClick={create}>
               <Icon name="globe" size={14} /> Create public link
@@ -101,7 +101,7 @@ export default function ShareDialog() {
             <div className="setting-row">
               <div className="info">
                 <div className="name">Public link</div>
-                <div className="desc">{share.enabled ? 'Anyone with the URL can view this note' : 'Sharing is paused — the URL returns 404'}</div>
+                <div className="desc">{share.enabled ? `Anyone with the URL can view this ${kind === 'folder' ? 'folder' : 'note'}` : 'Sharing is paused — the URL returns 404'}</div>
               </div>
               <button className={`graph-switch ${share.enabled ? 'on' : ''}`} onClick={toggle} aria-label="Toggle public link">
                 <span className="graph-knob" />

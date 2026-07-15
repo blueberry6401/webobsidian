@@ -368,9 +368,10 @@ webobsidian/
   - **Password tuỳ chọn cho từng share**: đặt/xoá ở trang quản lý (hash scrypt, không bao giờ trả
     hash về client — chỉ `hasPassword`). Khi share có password: endpoint public trả 401
     `{passwordRequired: true}`; khách nhập password → `POST /public/shares/{id}/unlock` → JWT
-    (ký bằng `jwtSecret`, TTL 12h, payload gắn share id) đặt trong httpOnly cookie scope đúng
-    `/public/shares/{id}` — ảnh nhúng tự gửi cookie. Đổi/xoá password không vô hiệu cookie đã cấp
-    (TTL ngắn chấp nhận được cho v1).
+    (ký bằng `jwtSecret`, TTL 12h, payload gắn share id) đặt trong httpOnly cookie scope `path: '/'`
+    (toàn site — cookie gắn với đúng share id qua payload JWT, không phải qua path) để cả
+    `/public/shares/{id}/*` lẫn trang SSR `/share/{id}[/f]` (bao gồm các trang browse thư mục) đều
+    tự gửi cookie. Đổi/xoá password không vô hiệu cookie đã cấp (TTL ngắn chấp nhận được cho v1).
 - **Share dialog**: menu "Share…" (context menu file tree + menu ⋯ của pane, cho note `.md`,
   canvas `.canvas`, **và thư mục**) mở popup cài đặt share của mục đó: tạo public link, ô URL +
   nút Copy, toggle bật/tắt link, đặt/đổi/xoá password, 4 nút mốc thời hạn dựng sẵn (hiển thị hạn
