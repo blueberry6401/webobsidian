@@ -275,10 +275,20 @@ publicSharesRouter.get(
       // file-kind shares use, but re-check containment: resolveVaultPath's
       // basename search is vault-wide, so without this the fallback could leak
       // a same-named file from outside the shared folder.
+      //
+      // The lexical `withinShareFolder` check alone isn't enough here: a
+      // symlink that physically lives inside the shared folder but points to
+      // a file elsewhere in the vault would lexically pass while its realpath
+      // escapes the share. Re-run the candidate through resolveInShareFolder
+      // (share-relative subpath) so it gets the same realpath-based
+      // containment check the primary resolution already enforces.
       let resolved = await resolveInShareFolder(share, requested);
       if (!resolved) {
         const fallback = await resolveVaultPath(requested);
-        resolved = fallback && withinShareFolder(share.path, fallback) ? fallback : null;
+        if (fallback && withinShareFolder(share.path, fallback)) {
+          const subpath = fallback === share.path ? '' : fallback.slice(share.path.length + 1);
+          resolved = await resolveInShareFolder(share, subpath);
+        }
       }
       target =
         resolved && !isMd(resolved) && !isCanvas(resolved) && !(await vault.isDirectory(resolved))
