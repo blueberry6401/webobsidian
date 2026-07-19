@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-15 (Phase 33 — thêm sidebar cây thư mục cố định cho trang folder share theo phản hồi người dùng, đã deploy prod)
+Cập nhật lần cuối: 2026-07-18 (Fix: trang folder-share không cuộn được với note dài — sửa CSS chuỗi flex, đã verify bằng Playwright desktop+mobile, chờ deploy prod)
 
 ---
 
@@ -1597,3 +1597,18 @@ Cập nhật lần cuối: 2026-07-15 (Phase 33 — thêm sidebar cây thư mụ
   search trả `hits: []` (tái hiện đúng bug), xác nhận fix giải quyết đúng root cause chứ không phải
   trùng hợp. Typecheck 2 workspace sạch. Việc deploy fix này lên droplet prod (`159.65.128.188`) chờ
   người dùng xác nhận trước khi restart service đang chạy vault thật.
+- 2026-07-18 (Fix: trang folder-share KHÔNG cuộn được khi mở note dài — người dùng báo qua link thật
+  `/share/<id>/f?path=Venue.md`): trang share 1 note cuộn được vì `.markdown-preview` (`flex:1;
+  overflow-y:auto`) là flex-child TRỰC TIẾP của `.public-page` (cột flex cao 100vh) nên nó tự là vùng
+  cuộn. Trang folder-share (Phase 33) chèn thêm `.public-folder-layout` (`min-height:100vh`) và
+  `.public-folder-main` (block, không giới hạn chiều cao) vào giữa → `overflow-y:auto` của
+  `.markdown-preview` không kích hoạt, note dài tràn ra ngoài và bị `body{overflow:hidden}` (vốn đúng
+  cho SPA) cắt cụt → không cuộn được cả trên desktop lẫn mobile. Root cause: mất phần tử vùng-cuộn
+  trong chuỗi flex. Sửa (chỉ CSS): `.public-folder-layout` đổi `min-height:100vh`→`flex:1;
+  min-height:0` (kế thừa 100vh từ `.public-page`), `.public-folder-main` thêm `display:flex;
+  flex-direction:column;min-height:0`, nav bỏ `position:sticky/top/100vh` → `max-height:100%` (tự
+  cuộn nội bộ) — tái lập đúng chuỗi flex của trang single-note đã chạy tốt, tránh dùng `100vh` cứng
+  (dễ dính lỗi thanh địa chỉ mobile). Verify: build production thật, tạo folder share thật + note dài
+  ~13k/18k px, Playwright lăn CHUỘT THẬT trên cả desktop (1280×800) và mobile (390×844) → section
+  cuối dịch 2400px (cuộn được); đối chứng inject lại CSS cũ → 0px (tái hiện đúng bug) trên cả 2
+  viewport. Chờ người dùng xác nhận trước khi deploy lên droplet prod.

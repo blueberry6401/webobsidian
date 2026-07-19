@@ -1085,10 +1085,15 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
    just the offending line. The single-note share page never hit this: its
    `.markdown-preview` (overflow-y: auto) is the direct flex item there, and
    auto/hidden overflow already zeroes the automatic minimum per spec. */
-.public-folder-layout { display: flex; width: 100%; min-height: 100vh; align-items: flex-start; min-width: 0; }
+/* flex:1 + min-height:0 makes this layout fill `.public-page` (height:100%) and,
+   crucially, lets `.markdown-preview` inside `.public-folder-main` be the scroll
+   container — the same chain the single-note page uses. Without it the note
+   column grows past the viewport and `body { overflow: hidden }` clips it, so a
+   long note on a folder-share page could not be scrolled at all. */
+.public-folder-layout { display: flex; width: 100%; flex: 1; min-height: 0; min-width: 0; }
 .public-folder-nav { width: var(--sidebar-width); flex-shrink: 0; border-right: 1px solid var(--bg-modifier-border);
-  padding: 16px 8px; box-sizing: border-box; position: sticky; top: 0; max-height: 100vh; overflow-y: auto; }
-.public-folder-main { flex: 1; min-width: 0; padding: 0 24px; }
+  padding: 16px 8px; box-sizing: border-box; max-height: 100%; overflow-y: auto; }
+.public-folder-main { flex: 1; min-width: 0; padding: 0 24px; display: flex; flex-direction: column; min-height: 0; }
 .public-folder-main .markdown-preview { padding-bottom: 80px; }
 
 .folder-nav-tree, .folder-nav-tree ul { list-style: none; margin: 0; padding: 0; }
