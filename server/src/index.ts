@@ -21,6 +21,7 @@ import { searchRouter } from './routes/search.js';
 import { settingsRouter } from './routes/settings.js';
 import { gitRouter } from './routes/git.js';
 import { keysRouter } from './routes/keys.js';
+import { mcpKeysRouter } from './routes/mcpkeys.js';
 import { pluginsRouter } from './routes/plugins.js';
 import { agentRouter } from './routes/agent.js';
 import { uiStateRouter } from './routes/uistate.js';
@@ -125,6 +126,7 @@ async function main() {
   app.use('/api/settings', settingsRouter);
   app.use('/api/git', gitRouter);
   app.use('/api/keys', keysRouter);
+  app.use('/api/mcp-keys', mcpKeysRouter);
   app.use('/api/plugins', pluginsRouter);
   app.use('/api/uistate', uiStateRouter);
   app.use('/api/shares', sharesRouter); // manage public share links (auth)

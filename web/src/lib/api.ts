@@ -236,6 +236,12 @@ export const api = {
     req<{ key: string; record: any }>('/api/keys/', { method: 'POST', body: JSON.stringify({ name, scopes }) }),
   revokeKey: (id: string) => req<{ ok: boolean }>(`/api/keys/${id}`, { method: 'DELETE' }),
 
+  // mcp connection keys
+  listMcpKeys: () => req<{ keys: any[] }>('/api/mcp-keys/'),
+  createMcpKey: (name: string) =>
+    req<{ key: string; record: any }>('/api/mcp-keys/', { method: 'POST', body: JSON.stringify({ name }) }),
+  revokeMcpKey: (id: string) => req<{ ok: boolean }>(`/api/mcp-keys/${id}`, { method: 'DELETE' }),
+
   // public shares (FR-10)
   listShares: () => req<{ shares: ShareRecord[] }>('/api/shares/'),
   createShare: (path: string, kind: 'file' | 'folder' = 'file') =>
