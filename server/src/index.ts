@@ -22,6 +22,7 @@ import { settingsRouter } from './routes/settings.js';
 import { gitRouter } from './routes/git.js';
 import { keysRouter } from './routes/keys.js';
 import { mcpKeysRouter } from './routes/mcpkeys.js';
+import { mcpRouter } from './routes/mcp.js';
 import { pluginsRouter } from './routes/plugins.js';
 import { agentRouter } from './routes/agent.js';
 import { uiStateRouter } from './routes/uistate.js';
@@ -122,6 +123,7 @@ async function main() {
   // otherwise gate every /api/* path (incl. /api/v1 and /api/keys) by prefix.
   app.use('/auth', authRouter);
   app.use('/api/v1', agentRouter); // agent API (api-key auth)
+  app.use('/mcp', mcpRouter); // MCP endpoint (key auth via ?key=)
   app.use('/api/files', filesRouter);
   app.use('/api/settings', settingsRouter);
   app.use('/api/git', gitRouter);
@@ -140,7 +142,7 @@ async function main() {
   if (await dirExists(publicDir)) {
     app.use(express.static(publicDir));
     app.get('*', (req, res, next) => {
-      if (req.path.startsWith('/api') || req.path.startsWith('/auth') || req.path.startsWith('/public')) return next();
+      if (req.path.startsWith('/api') || req.path.startsWith('/auth') || req.path.startsWith('/public') || req.path.startsWith('/mcp')) return next();
       res.sendFile(path.join(publicDir, 'index.html'));
     });
   }
