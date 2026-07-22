@@ -7,6 +7,10 @@ changes. The format is loosely based on [Keep a Changelog](https://keepachangelo
 ## [Unreleased]
 
 ### Added
+- **Built-in MCP server**: WebObsidian now speaks the Model Context Protocol directly at
+  `POST /mcp?key=<token>` (Streamable HTTP), with 11 tools that call the vault services
+  in-process. Connection keys are created/revoked in **Settings → MCP** (shown once). This
+  replaces — and retires — the standalone Cloudflare Worker. See [docs/MCP.md](docs/MCP.md).
 - Open-source repository scaffolding: `README.md` (with logo), `LICENSE` (MIT),
   `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, GitHub issue/PR templates and a
   CI workflow (typecheck, build, Docker image).
