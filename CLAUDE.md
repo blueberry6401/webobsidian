@@ -42,6 +42,14 @@ docker compose up      # chạy full stack
 - `data/` — runtime config & index (gitignored).
 - `docs/` — tài liệu bổ sung. Xem `docs/RUNNING.md` để chạy dev/production từ đầu.
 
+## MCP (server nhúng trong web app, từ 2026-07-22)
+- Web app tự phục vụ giao thức MCP tại `POST /mcp?key=<token>` (Streamable HTTP stateless,
+  `server/src/routes/mcp.ts` + `services/mcptools.ts`). **Cloudflare Worker `webobsidian-mcp` đã khai
+  tử** — đừng deploy lại nó. Chi tiết: `docs/MCP.md`.
+- Key kết nối MCP tách riêng khỏi API key `wok_`: lưu `data/settings.json` (`mcp.keys`, băm SHA-256,
+  soft-revoke — `services/mcpkeys.ts`), quản lý ở tab **Settings → MCP**.
+- Verify: `cd server && ../node_modules/.bin/tsx scripts/verify-mcp.ts` (server thật + MCP client thật).
+
 ## Remote git
 - **⚠️ BẮT BUỘC — LÀM ĐẦU TIÊN MỖI PHIÊN: base code trên `fork/main`, KHÔNG tin nhánh worktree
   hiện tại.** Worktree tạm rất hay được tạo ở một commit CŨ, tụt lại sau `fork/main` cả trăm

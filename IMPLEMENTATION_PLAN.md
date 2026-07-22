@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-22 (Collapsible headings cho trang public share — parity Reading view của admin, đã verify Playwright, chờ deploy prod)
+Cập nhật lần cuối: 2026-07-22 (MCP server nhúng thẳng vào web app: endpoint `/mcp` + tab Settings → MCP; Cloudflare Worker khai tử — đã verify bằng MCP client thật, chờ deploy prod)
 
 ---
 
@@ -554,6 +554,20 @@ Cập nhật lần cuối: 2026-07-22 (Collapsible headings cho trang public sha
 - [x] M33.7 Deploy prod (droplet `obsidian.henry-group.uk`), verify sau deploy.
 
 ### Nhật ký tiến độ
+- 2026-07-22 (MCP server nhúng vào web app — khai tử Cloudflare Worker, theo yêu cầu người dùng):
+  trước đây MCP là Worker Cloudflare riêng (dịch giao thức MCP → REST `/api/v1`, key lưu Cloudflare
+  KV, quản lý ở trang `/admin` tách biệt). Nay web app tự phục vụ giao thức MCP tại `POST /mcp?key=`
+  (Streamable HTTP stateless, `@modelcontextprotocol/sdk` v1.29 + `StreamableHTTPServerTransport`,
+  `server/src/routes/mcp.ts`) — 11 tool (`server/src/services/mcptools.ts`) gọi THẲNG service nội bộ
+  (`vault`, `qmd`, `backlinksFor`, `applyEdit`, `contentVersion`), bỏ cú nhảy HTTP và `wok_` trung
+  gian. Key kết nối lưu trong `data/settings.json` (`mcp.keys`, băm SHA-256, soft-revoke —
+  `server/src/services/mcpkeys.ts`), quản lý tại tab **Settings → MCP** (`web/src/components/Settings.tsx`
+  + `/api/mcp-keys`), URL kết nối hiện đúng một lần. Không thêm DB engine; `/api/v1` và hệ API key
+  `wok_` giữ nguyên. Verify: `server/scripts/verify-mcp-keys.ts` (14/14, kho key in-process) +
+  `server/scripts/verify-mcp.ts` (16/16, dựng server thật + MCP client THẬT chạy trọn vòng
+  write/read/grep/edit/append/list/backlinks/tags/search/delete trên vault tạm, key sai → 401).
+  Còn lại (deploy-time, ngoài nhánh này): khai tử Worker, cập nhật `_deployments/`, cắm lại connector
+  Claude bằng URL mới.
 - 2026-07-22 (Collapsible headings cho trang public share — parity với Reading view của admin, theo
   yêu cầu người dùng): trang `/share/<id>` là SSR HTML tĩnh (không React/CodeMirror) nên gập heading
   làm bằng script vanilla gắn CSP nonce (`headingFoldScript` trong `server/src/services/renderhtml.ts`,
