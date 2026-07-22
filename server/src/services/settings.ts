@@ -16,6 +16,16 @@ const ApiKeySchema = z.object({
   lastUsed: z.string().nullable().default(null),
 });
 
+const McpKeySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  hash: z.string(),
+  prefix: z.string(),
+  createdAt: z.string(),
+  lastUsed: z.string().nullable().default(null),
+  revoked: z.boolean().default(false),
+});
+
 const HtmlTemplateSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -73,6 +83,11 @@ const SettingsSchema = z.object({
       rateLimitPerMin: z.number().default(120),
     })
     .default({}),
+  mcp: z
+    .object({
+      keys: z.array(McpKeySchema).default([]),
+    })
+    .default({}),
   llm: z
     .object({
       provider: z.enum(['anthropic', 'openai']).default('anthropic'),
@@ -98,6 +113,7 @@ const SettingsSchema = z.object({
 
 export type Settings = z.infer<typeof SettingsSchema>;
 export type ApiKeyRecord = z.infer<typeof ApiKeySchema>;
+export type McpKeyRecord = z.infer<typeof McpKeySchema>;
 export type HtmlTemplate = z.infer<typeof HtmlTemplateSchema>;
 
 /** ---- Store --------------------------------------------------------------- */
@@ -219,6 +235,17 @@ export function redactSettings(s: Settings) {
         scopes: k.scopes,
         createdAt: k.createdAt,
         lastUsed: k.lastUsed,
+      })),
+    },
+    mcp: {
+      ...s.mcp,
+      keys: s.mcp.keys.map((k) => ({
+        id: k.id,
+        name: k.name,
+        prefix: k.prefix,
+        createdAt: k.createdAt,
+        lastUsed: k.lastUsed,
+        revoked: k.revoked,
       })),
     },
     llm: {
