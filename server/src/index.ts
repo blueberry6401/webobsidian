@@ -156,6 +156,13 @@ async function main() {
   const publicDir = path.join(__dirname, '..', 'public');
   if (await dirExists(publicDir)) {
     app.use(express.static(publicDir));
+    // OAuth-discovery paths that MCP clients (claude.ai connector) probe. They MUST
+    // NOT return the SPA's 200 HTML, or the client thinks an OAuth server exists,
+    // tries Dynamic Client Registration, and fails ("Couldn't register…"). Returning
+    // 404 tells the client "no OAuth here" so it falls back to the ?key= URL token.
+    app.all(['/.well-known/*', '/register'], (_req, res) => {
+      res.status(404).json({ error: 'not_found' });
+    });
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/auth') || req.path.startsWith('/public') || req.path.startsWith('/mcp')) return next();
       res.sendFile(path.join(publicDir, 'index.html'));
