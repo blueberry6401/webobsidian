@@ -14,7 +14,7 @@ import * as vault from '../services/vault.js';
 import type { TreeNode } from '../services/vault.js';
 import { getShareStatus, type ShareRecord } from '../services/shares.js';
 import { isUnlocked, isMd, isCanvas, resolveInShareFolder } from './shares.js';
-import { renderNoteHtml, metaDescription, firstImage, escapeHtml } from '../services/renderhtml.js';
+import { renderNoteHtml, metaDescription, firstImage, escapeHtml, headingFoldScript } from '../services/renderhtml.js';
 import { renderCanvasHtml, canvasDescription, canvasFirstImage, canvasViewerScript } from '../services/rendercanvas.js';
 import { IMAGE_EXT_RE, VIDEO_EXT_RE, AUDIO_EXT_RE } from '../services/mime.js';
 
@@ -382,7 +382,7 @@ sharePageRouter.get(
         bare: isCv,
         body: isCv
           ? `<div class="public-canvas-title">${escapeHtml(title)}</div>\n${html}\n${canvasViewerScript(res.locals.cspNonce)}`
-          : `<div class="inline-title">${escapeHtml(title)}</div>\n${html}`,
+          : `<div class="inline-title">${escapeHtml(title)}</div>\n${html}\n${headingFoldScript(res.locals.cspNonce)}`,
       }),
     );
   }),
@@ -472,7 +472,7 @@ sharePageRouter.get(
           body: `${breadcrumb(share, rel)}\n${
             isCv
               ? `<div class="public-canvas-title">${escapeHtml(title)}</div>\n${html}\n${canvasViewerScript(res.locals.cspNonce)}`
-              : `<div class="inline-title">${escapeHtml(title)}</div>\n${html}`
+              : `<div class="inline-title">${escapeHtml(title)}</div>\n${html}\n${headingFoldScript(res.locals.cspNonce)}`
           }`,
         }),
       );

@@ -1060,6 +1060,32 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .public-unlock-title { font-weight: 600; color: var(--text-normal); text-align: center; }
 .public-unlock-error { color: #e5534b; font-size: 13px; text-align: center; }
 
+/* Collapsible headings on the share page (parity with the Reading view). The
+   chevron sits in a reserved gutter (net-zero text shift via matching -/+ margin)
+   so it never clips at the mobile screen edge. */
+.public-page .preview-inner .heading-foldable {
+  cursor: pointer;
+  position: relative;
+  padding-left: 1.2em;
+  margin-left: -1.2em;
+}
+.public-page .heading-collapse-indicator {
+  position: absolute;
+  left: 0;
+  top: 0.18em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity var(--transition), transform var(--transition);
+}
+.public-page .heading-collapse-indicator svg { width: 0.72em; height: 0.72em; }
+.public-page .heading-foldable:hover > .heading-collapse-indicator,
+.public-page .heading-foldable.is-collapsed > .heading-collapse-indicator { opacity: 1; }
+.public-page .heading-foldable.is-collapsed > .heading-collapse-indicator { transform: rotate(-90deg); }
+
 .public-breadcrumb { display: flex; flex-wrap: wrap; gap: 4px; color: var(--text-muted); font-size: 13px; margin-bottom: 14px; }
 .public-breadcrumb a { color: var(--text-muted); text-decoration: none; }
 .public-breadcrumb a:hover { color: var(--text-normal); text-decoration: underline; }
