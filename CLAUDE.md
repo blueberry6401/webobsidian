@@ -43,6 +43,17 @@ docker compose up      # chạy full stack
 - `docs/` — tài liệu bổ sung. Xem `docs/RUNNING.md` để chạy dev/production từ đầu.
 
 ## Remote git
+- **⚠️ BẮT BUỘC — LÀM ĐẦU TIÊN MỖI PHIÊN: base code trên `fork/main`, KHÔNG tin nhánh worktree
+  hiện tại.** Worktree tạm rất hay được tạo ở một commit CŨ, tụt lại sau `fork/main` cả trăm
+  commit (đã dính lỗi này NHIỀU lần). `fork/main` mới là nguồn sự thật đang chạy prod. Nếu code
+  trên base cũ rồi push thẳng sẽ **làm prod thụt lùi**. Quy trình đúng:
+  ```bash
+  git fetch fork
+  git rev-list --left-right --count fork/main...HEAD   # số bên trái > 0 ⇒ ĐANG TỤT SAU
+  git reset --hard fork/main                            # đưa worktree về đúng base trước khi sửa
+  ```
+  Chạy 3 lệnh này TRƯỚC khi đọc/sửa bất kỳ file nào. Chỉ khi `fork/main...HEAD` cho `0 0` (hoặc
+  chỉ có commit của chính phiên này ở bên phải) mới được tin nhánh hiện tại.
 - `origin` = repo gốc upstream (`xnohat/webobsidian`) — chỉ đọc/tham khảo, không push trừ khi
   người dùng yêu cầu rõ.
 - `fork` = repo riêng của người dùng (`blueberry6401/webobsidian`) — đích push mặc định cho các

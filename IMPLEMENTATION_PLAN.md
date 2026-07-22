@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-18 (Fix: trang folder-share không cuộn được với note dài — sửa CSS chuỗi flex, đã verify bằng Playwright desktop+mobile, chờ deploy prod)
+Cập nhật lần cuối: 2026-07-22 (Collapsible headings cho trang public share — parity Reading view của admin, đã verify Playwright, chờ deploy prod)
 
 ---
 
@@ -554,6 +554,18 @@ Cập nhật lần cuối: 2026-07-18 (Fix: trang folder-share không cuộn đ�
 - [x] M33.7 Deploy prod (droplet `<production-domain>`), verify sau deploy.
 
 ### Nhật ký tiến độ
+- 2026-07-22 (Collapsible headings cho trang public share — parity với Reading view của admin, theo
+  yêu cầu người dùng): trang `/share/<id>` là SSR HTML tĩnh (không React/CodeMirror) nên gập heading
+  làm bằng script vanilla gắn CSP nonce (`headingFoldScript` trong `server/src/services/renderhtml.ts`,
+  chèn vào cả 2 nhánh render note — share note đơn và note trong folder-share — ở `sharepage.ts`) + CSS
+  scoped `.public-page` trong `web/src/styles/obsidian.css`. HTML render ra là danh sách phẳng (h1–h6 +
+  nội dung là siblings trong `.preview-inner`) nên gập một heading = ẩn mọi sibling phía sau tới khi gặp
+  heading cùng cấp/cao hơn ("shadow model") → nested tự đúng. Chevron (lucide chevron-down, xoay -90° khi
+  gập) ẩn cho tới khi hover/collapse. Chỉ heading có nội dung mới foldable; lọc SCRIPT/STYLE khỏi siblings
+  để heading cuối không bị nhận nhầm gập được (chính thẻ `<script>` nằm trong `.preview-inner`). Admin
+  không đổi (CSS scoped, JS chỉ inject ở share). **Verify thật bằng Playwright (Chromium)** trên production
+  build + vault test: gập "Phần A" → ẩn h3 con, giữ h2 "Phần B" cùng cấp; mở lại khôi phục; heading rỗng
+  cuối không có chevron; chevron opacity 0 khi idle. Typecheck + build sạch. Chờ deploy prod.
 - 2026-07-15 (Phase 33 — thêm sidebar cây thư mục cố định cho trang folder share, theo phản hồi
   người dùng sau khi tự tay dùng thử link share thật): mở note trong folder share trước đó chỉ có
   breadcrumb, phải bấm ngược lại trang liệt kê mỗi lần muốn xem file khác — bất tiện. Thêm cột
