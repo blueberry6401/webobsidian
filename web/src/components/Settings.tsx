@@ -3,7 +3,7 @@ import { useStore } from '../lib/store';
 import { api } from '../lib/api';
 import Icon from './Icon';
 
-type Section = 'vault' | 'git' | 'api' | 'sharing' | 'ai' | 'plugins' | 'appearance' | 'account' | 'about';
+type Section = 'vault' | 'git' | 'api' | 'mcp' | 'sharing' | 'ai' | 'plugins' | 'appearance' | 'account' | 'about';
 
 export default function Settings() {
   const open = useStore((s) => s.settingsOpen);
@@ -22,7 +22,7 @@ export default function Settings() {
       <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
         <div className="settings-layout">
           <div className="settings-nav">
-            {(['vault', 'git', 'api', 'sharing', 'ai', 'plugins', 'appearance', 'account', 'about'] as Section[]).map((s) => (
+            {(['vault', 'git', 'api', 'mcp', 'sharing', 'ai', 'plugins', 'appearance', 'account', 'about'] as Section[]).map((s) => (
               <button key={s} className={section === s ? 'active' : ''} onClick={() => setSection(s)}>
                 {labels[s]}
               </button>
@@ -32,6 +32,7 @@ export default function Settings() {
             {settings && section === 'vault' && <VaultSettings s={settings} reload={() => api.getSettings().then(setSettings)} />}
             {settings && section === 'git' && <GitSettings s={settings} reload={() => api.getSettings().then(setSettings)} />}
             {section === 'api' && <ApiKeys />}
+            {section === 'mcp' && <McpKeys />}
             {section === 'sharing' && <Shares />}
             {settings && section === 'ai' && <AiSettings s={settings} reload={() => api.getSettings().then(setSettings)} />}
             {section === 'plugins' && <Plugins />}
@@ -49,6 +50,7 @@ const labels: Record<Section, string> = {
   vault: 'Vault & Files',
   git: 'GitHub Sync',
   api: 'API Keys',
+  mcp: 'MCP',
   sharing: 'Sharing',
   ai: 'AI',
   plugins: 'Community Plugins',
@@ -250,6 +252,58 @@ function ApiKeys() {
               <div className="desc">scopes: {k.scopes.join(', ')} · used: {k.lastUsed ?? 'never'}</div>
             </div>
             <button className="btn danger" onClick={async () => { await api.revokeKey(k.id); load(); }}>Revoke</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function McpKeys() {
+  const [keys, setKeys] = useState<any[]>([]);
+  const [name, setName] = useState('Claude – MacBook');
+  const [createdUrl, setCreatedUrl] = useState('');
+  const load = () => api.listMcpKeys().then((r) => setKeys(r.keys)).catch(() => {});
+  useEffect(() => { load(); }, []);
+  const create = async () => {
+    const r = await api.createMcpKey(name);
+    setCreatedUrl(`${location.origin}/mcp?key=${r.key}`);
+    await load();
+  };
+  return (
+    <div>
+      <h2>MCP</h2>
+      <p style={{ color: 'var(--text-muted)' }}>
+        Kết nối Claude tới vault này qua giao thức MCP. Dán URL vào claude.ai → Settings → Connectors,
+        hoặc chạy <code>claude mcp add</code>. URL chứa key bí mật — chỉ hiện một lần.
+      </p>
+      <Row name="Tên kết nối">
+        <input className="text-input" value={name} onChange={(e) => setName(e.target.value)} />
+      </Row>
+      <button className="btn" onClick={create}>Tạo key</button>
+      {createdUrl && (
+        <pre style={{ background: 'var(--bg-primary)', padding: 10, borderRadius: 6, marginTop: 10, wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
+          {createdUrl}
+          {'\n'}⚠ Copy ngay — sẽ không hiện lại.
+        </pre>
+      )}
+      <div style={{ marginTop: 16 }}>
+        {keys.map((k) => (
+          <div className="setting-row" key={k.id}>
+            <div className="info">
+              <div className="name">
+                {k.name} <span style={{ color: 'var(--text-faint)' }}>{k.prefix}…</span>
+                {k.revoked && <span style={{ color: '#c0392b', marginLeft: 8 }}>(đã thu hồi)</span>}
+              </div>
+              <div className="desc">
+                tạo: {String(k.createdAt).slice(0, 10)} · dùng gần nhất: {k.lastUsed ?? 'chưa'}
+              </div>
+            </div>
+            {!k.revoked && (
+              <button className="btn danger" onClick={async () => { await api.revokeMcpKey(k.id); load(); }}>
+                Thu hồi
+              </button>
+            )}
           </div>
         ))}
       </div>
