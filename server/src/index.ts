@@ -76,6 +76,21 @@ async function main() {
   app.use(express.json({ limit: '32mb' }));
   app.use(cookieParser());
 
+  // TEMP DEBUG (chẩn đoán connector claude.ai) — log mọi request không phải asset tĩnh.
+  // KHÔNG log giá trị token: chỉ ghi có ?key= hay không (độ dài) + vài header. Gỡ sau khi xong.
+  app.use((req, _res, next) => {
+    if (!/\.(js|css|png|jpg|jpeg|svg|woff2?|ico|map|json)$/i.test(req.path)) {
+      const qkeys = Object.keys(req.query);
+      const keyLen = typeof req.query.key === 'string' ? (req.query.key as string).length : 0;
+      console.log(
+        `[req] ${req.method} ${req.path} q=[${qkeys.join(',')}] keyLen=${keyLen} ` +
+          `accept="${req.headers['accept'] ?? '-'}" auth=${req.headers['authorization'] ? 'yes' : 'no'} ` +
+          `ua="${String(req.headers['user-agent'] ?? '-').slice(0, 60)}"`,
+      );
+    }
+    next();
+  });
+
   // Per-request CSP nonce — used by the SSR share page's inline <script>.
   app.use((_req, res, next) => {
     res.locals.cspNonce = randomBytes(16).toString('base64');
