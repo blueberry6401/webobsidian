@@ -12,7 +12,9 @@ and are separate from the `wok_` `/api/v1` API keys.
 Tools (11): `health_check`, `list_notes`, `read_note`, `search_notes`, `grep_note`,
 `list_tags`, `get_backlinks`, `write_note`, `append_note`, `edit_note`, `delete_note`.
 The four write/delete tools carry `destructiveHint` so Claude confirms first. The tools
-call the in-process vault/search/link services directly (no HTTP hop).
+call the in-process vault/search/link services directly (no HTTP hop). `list_notes`
+accepts `sort` (`name` | `modified` | `created`) + `order` (`asc` | `desc`), defaulting
+to `modified`/`desc` (most-recently-edited first) so new notes never fall past `limit`.
 
 This replaces the standalone Cloudflare Worker (`webobsidian-mcp`), which is retired.
 

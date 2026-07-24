@@ -95,6 +95,12 @@ async function main() {
     const l = await client.callTool({ name: 'list_notes', arguments: { folder: 'MCP' } });
     check('list_notes thấy note trong folder', textOf(l).includes('Verify Note.md'), textOf(l));
 
+    // sort/order được nhận và echo lại; mặc định modified/desc
+    const lDefault = await client.callTool({ name: 'list_notes', arguments: {} });
+    check('list_notes mặc định = modified/desc', textOf(lDefault).includes('"sort": "modified"') && textOf(lDefault).includes('"order": "desc"'), textOf(lDefault));
+    const lName = await client.callTool({ name: 'list_notes', arguments: { sort: 'name', order: 'asc' } });
+    check('list_notes nhận sort=name/order=asc', textOf(lName).includes('"sort": "name"') && textOf(lName).includes('"order": "asc"'), textOf(lName));
+
     const b = await client.callTool({ name: 'get_backlinks', arguments: { path: notePath } });
     check('get_backlinks trả (mảng, rỗng cũng ok)', textOf(b).includes('backlinks'), textOf(b));
 

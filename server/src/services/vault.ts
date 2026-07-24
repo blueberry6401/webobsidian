@@ -426,9 +426,9 @@ export async function emptyTrash(): Promise<void> {
 }
 
 /** List all markdown files (vault-relative) for indexing. */
-export async function listMarkdownFiles(): Promise<string[]> {
+async function collectMarkdownFiles(): Promise<Array<{ rel: string; abs: string }>> {
   const root = await getVaultRoot();
-  const out: string[] = [];
+  const out: Array<{ rel: string; abs: string }> = [];
   async function walk(dir: string) {
     let entries;
     try {
@@ -443,9 +443,45 @@ export async function listMarkdownFiles(): Promise<string[]> {
       if (IGNORED.has(e.name) || e.name.startsWith('.')) continue;
       const abs = path.join(dir, e.name);
       if (e.isDirectory()) await walk(abs);
-      else if (e.isFile() && /\.(md|markdown)$/i.test(e.name)) out.push(toRel(root, abs));
+      else if (e.isFile() && /\.(md|markdown)$/i.test(e.name)) out.push({ rel: toRel(root, abs), abs });
     }
   }
   await walk(root);
   return out;
+}
+
+export async function listMarkdownFiles(): Promise<string[]> {
+  return (await collectMarkdownFiles()).map((f) => f.rel);
+}
+
+export type NoteSort = 'name' | 'modified' | 'created';
+export type SortOrder = 'asc' | 'desc';
+
+/**
+ * List markdown notes sorted for the Agent API / MCP. `name` sorts by
+ * vault-relative path; `modified`/`created` reuse the shared statCache (one stat
+ * per file, cached thereafter) so paginated listing stays cheap on large vaults.
+ * A name tiebreak keeps the order stable across calls.
+ */
+export async function listMarkdownFilesSorted(
+  sort: NoteSort = 'modified',
+  order: SortOrder = 'desc',
+): Promise<string[]> {
+  const files = await collectMarkdownFiles();
+  if (sort === 'name') {
+    files.sort((a, b) => a.rel.localeCompare(b.rel));
+  } else {
+    const stats = new Map<string, { m: number; c: number }>();
+    await Promise.all(files.map(async (f) => { stats.set(f.rel, await fileStat(f.abs, f.rel)); }));
+    files.sort((a, b) => {
+      const sa = stats.get(a.rel)!;
+      const sb = stats.get(b.rel)!;
+      const va = sort === 'modified' ? sa.m : sa.c;
+      const vb = sort === 'modified' ? sb.m : sb.c;
+      if (va !== vb) return va - vb;
+      return a.rel.localeCompare(b.rel);
+    });
+  }
+  if (order === 'desc') files.reverse();
+  return files.map((f) => f.rel);
 }

@@ -39,17 +39,23 @@ export function createMcpServer(): McpServer {
     'list_notes',
     {
       description:
-        'Liệt kê đường dẫn note trong vault (phân trang). Lọc theo thư mục bằng folder (tiền tố path).',
+        'Liệt kê đường dẫn note trong vault (phân trang). Lọc theo thư mục bằng folder (tiền tố path). ' +
+        'Sắp xếp bằng sort (name | modified | created) + order (asc | desc); mặc định modified/desc ' +
+        '(note sửa gần nhất lên đầu) để note mới không rơi khỏi limit.',
       inputSchema: {
         offset: z.number().int().min(0).optional(),
         limit: z.number().int().min(1).max(200).optional(),
         folder: z.string().optional(),
+        sort: z.enum(['name', 'modified', 'created']).optional(),
+        order: z.enum(['asc', 'desc']).optional(),
       },
       annotations: RO,
     },
-    ({ offset, limit, folder }) =>
+    ({ offset, limit, folder, sort, order }) =>
       run(async () => {
-        const all = await vault.listMarkdownFiles();
+        const s = sort ?? 'modified';
+        const ord = order ?? (s === 'name' ? 'asc' : 'desc');
+        const all = await vault.listMarkdownFilesSorted(s, ord);
         const f = (folder ?? '').replace(/^\/+|\/+$/g, '');
         const filtered = f ? all.filter((p) => p === f || p.startsWith(f + '/')) : all;
         const off = offset ?? 0;
@@ -58,6 +64,8 @@ export function createMcpServer(): McpServer {
           total: filtered.length,
           offset: off,
           limit: lim,
+          sort: s,
+          order: ord,
           folder: f || undefined,
           notes: filtered.slice(off, off + lim),
         };

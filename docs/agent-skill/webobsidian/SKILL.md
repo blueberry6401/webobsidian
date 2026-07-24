@@ -69,7 +69,7 @@ for queries; encode `/`-containing paths in the URL path, e.g. `Notes/Ideas.md` 
 | Method | Path | Scope | Description |
 |--------|------|-------|-------------|
 | GET | `/api/v1/health` | – | Liveness check |
-| GET | `/api/v1/notes?offset=&limit=` | read | List markdown notes (paginated) |
+| GET | `/api/v1/notes?sort=&order=&offset=&limit=` | read | List markdown notes (sorted, paginated) |
 | GET | `/api/v1/notes/{path}` | read | Read a note + parsed metadata |
 | PUT | `/api/v1/notes/{path}` | write | Create / overwrite a note — body `{"content":"..."}` |
 | PATCH | `/api/v1/notes/{path}` | write | Append — body `{"append":"..."}` |
@@ -81,8 +81,15 @@ for queries; encode `/`-containing paths in the URL path, e.g. `Notes/Ideas.md` 
 ## Recipes
 
 ```bash
-# List 10 notes
+# List 10 notes — default order is most-recently-modified first
 curl -s -H "X-API-Key: $KEY" "$BASE/api/v1/notes?limit=10"
+
+# Choose the order: sort=name|modified|created, order=asc|desc.
+# (Defaults: sort=modified, order=desc; for sort=name the default is asc.)
+curl -s -H "X-API-Key: $KEY" "$BASE/api/v1/notes?sort=modified&order=desc&limit=10"  # recently edited
+curl -s -H "X-API-Key: $KEY" "$BASE/api/v1/notes?sort=name&limit=10"                 # alphabetical
+# NOTE: `limit` caps the page (max 500). Use `total` + `offset` to page through the
+# whole vault — notes past the limit are NOT dropped, just on later pages.
 
 # Read a note (URL-encode the path's query value if it has spaces/slashes)
 curl -s -H "X-API-Key: $KEY" "$BASE/api/v1/notes/Welcome.md"
