@@ -589,7 +589,7 @@ GET    /share/{id}/f?path=        # (chỉ kind=folder) SSR trang con: thư mụ
 
 ### Agent API (API-key auth) — `/api/v1`
 ```
-GET    /api/v1/notes                 # list (paginate)
+GET    /api/v1/notes                 # list (sort=name|modified|created, order=asc|desc; default modified/desc; paginate)
 GET    /api/v1/notes/{path}          # read
 PUT    /api/v1/notes/{path}          # create/update
 PATCH  /api/v1/notes/{path}          # body {append} → append content;

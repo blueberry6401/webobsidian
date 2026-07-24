@@ -26,13 +26,23 @@ agentRouter.get(
   '/notes',
   requireApiKey('read'),
   asyncHandler(async (req, res) => {
-    const all = await vault.listMarkdownFiles();
+    // The AI picks the order. Default = most-recently-modified first, so newly
+    // touched notes never fall past the limit into an unread tail.
+    const sort: vault.NoteSort =
+      req.query.sort === 'name' || req.query.sort === 'created' ? req.query.sort : 'modified';
+    const order: vault.SortOrder =
+      req.query.order === 'asc' || req.query.order === 'desc'
+        ? req.query.order
+        : sort === 'name'
+          ? 'asc'
+          : 'desc';
+    const all = await vault.listMarkdownFilesSorted(sort, order);
     const folderRaw = typeof req.query.folder === 'string' ? req.query.folder : '';
     const folder = folderRaw.replace(/^\/+|\/+$/g, '');
     const filtered = folder ? all.filter((p) => p === folder || p.startsWith(folder + '/')) : all;
     const offset = Number(req.query.offset ?? 0) || 0;
     const limit = Math.min(Number(req.query.limit ?? 100) || 100, 500);
-    res.json({ total: filtered.length, offset, limit, folder: folder || undefined, notes: filtered.slice(offset, offset + limit) });
+    res.json({ total: filtered.length, offset, limit, sort, order, folder: folder || undefined, notes: filtered.slice(offset, offset + limit) });
   }),
 );
 

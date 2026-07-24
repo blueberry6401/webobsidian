@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-22 (MCP server nhúng thẳng vào web app: endpoint `/mcp` + tab Settings → MCP; Cloudflare Worker khai tử — đã verify bằng MCP client thật, chờ deploy prod)
+Cập nhật lần cuối: 2026-07-24 (List notes: thêm sort/order cho REST + MCP, mặc định modified-desc — FR-6)
 
 ---
 
@@ -552,6 +552,15 @@ Cập nhật lần cuối: 2026-07-22 (MCP server nhúng thẳng vào web app: e
       `curl ?path=<file>.canvas` trả 404 (không lộ JSON thô); trang SSR `/f` (root + subfolder) vẫn
       hoạt động đúng sau khi đổi `resolveInShareFolder` sang realpath.
 - [x] M33.7 Deploy prod (droplet `obsidian.henry-group.uk`), verify sau deploy.
+
+## Phase 34 — List notes: cho AI tự chọn thứ tự sắp xếp — FR-6 (theo yêu cầu người dùng)
+- [x] M34.1 `list_notes` (cả REST `GET /api/v1/notes` lẫn tool MCP) nhận `sort=name|modified|created`
+      + `order=asc|desc`; mặc định `modified`/`desc` (note sửa gần nhất lên đầu) để note mới không rơi
+      khỏi `limit` rồi "biến mất" với AI gọi một lần. `vault.ts`: `collectMarkdownFiles()` (rel+abs) →
+      `listMarkdownFilesSorted()` dùng lại `fileStat`/`statCache` (1 stat/file, cache sau đó). Giữ nguyên
+      `folder` filter + phân trang + `total`; response thêm `sort`/`order`, `notes` vẫn string[]. SKILL.md +
+      docs/MCP.md + PRD cập nhật. Verify: e2e HTTP thật (login→tạo key→gọi endpoint) — default/name/modified/
+      created/pagination/bogus-fallback đều đúng thứ tự; typecheck sạch.
 
 ### Nhật ký tiến độ
 - 2026-07-22 (MCP server nhúng vào web app — khai tử Cloudflare Worker, theo yêu cầu người dùng):
