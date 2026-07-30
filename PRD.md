@@ -263,6 +263,11 @@ webobsidian/
   bằng pass mặc định. settings.json mặc định **không** chứa mật khẩu nào.
 - Người dùng đổi mật khẩu trong Settings → Account (nhập pass hiện tại + pass mới). Hash mới
   lưu ở `auth.userPasswordHash`. Khi field này rỗng nghĩa là đang dùng pass mặc định `123456`.
+- **Đổi mật khẩu → force logout mọi phiên khác:** đổi pass sẽ rotate `auth.sessionSecret` (secret
+  ký JWT phiên owner, **tách riêng** khỏi `auth.jwtSecret` dùng cho unlock-cookie share công khai).
+  Mọi token owner đã cấp trước đó (mọi thiết bị/tab) hết hiệu lực ngay; riêng phiên vừa gọi
+  `/auth/change-password` được cấp token mới luôn nên không bị văng theo. Share-link công khai
+  đang mở (ký bằng `jwtSecret`) không bị ảnh hưởng.
 - **Mật khẩu override (khôi phục khi quên pass):** `auth.passwordHash` trong `data/settings.json`
   (sửa tay, dạng scrypt hash) **hoặc** biến môi trường `WEBOBSIDIAN_PASSWORD` (plaintext). Login
   chấp nhận pass override **bất kể** người dùng đã đổi pass hay chưa. Mặc định không có override.
@@ -549,6 +554,8 @@ POST   /auth/setup            # (legacy) set password lần đầu — vô hiệ
 POST   /auth/login            # login → cookie
 POST   /auth/logout
 POST   /auth/change-password  # đổi pass: { currentPassword, newPassword } (yêu cầu auth)
+                               # → rotate sessionSecret, văng mọi phiên owner khác, cấp lại
+                               #   cookie mới cho phiên hiện tại
 GET    /auth/me
 GET    /api/files            # cây thư mục
 GET    /api/files/*path      # đọc file (md/binary)
@@ -609,7 +616,8 @@ GET    /api/v1/tags
   "version": 1,
   "auth":   { "userPasswordHash": "scrypt$... (pass đã đổi; rỗng = dùng mặc định 123456)",
               "passwordHash": "scrypt$... (override khôi phục; rỗng = không có)",
-              "jwtSecret": "..." },
+              "jwtSecret": "... (ký unlock-cookie share công khai)",
+              "sessionSecret": "... (ký JWT phiên owner; rotate khi đổi mật khẩu)" },
   "vault":  { "path": "/vault", "allowedRoots": ["/vault"], "trash": ".trash", "deleteMode": "trash" },
   "git":    { "enabled": false, "remote": "", "branch": "main",
               "token": "", "authorName": "", "authorEmail": "",

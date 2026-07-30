@@ -77,7 +77,11 @@ authRouter.post(
       res.status(401).json({ error: 'Current password is incorrect' });
       return;
     }
-    res.json({ ok: true });
+    // changePassword() rotates the session-signing secret, invalidating every
+    // owner token issued before now (all devices/tabs). Re-issue a fresh one so
+    // the request that just changed the password isn't logged out too.
+    const token = await issueToken();
+    res.cookie(COOKIE_NAME, token, cookieOpts(req)).json({ ok: true });
   }),
 );
 

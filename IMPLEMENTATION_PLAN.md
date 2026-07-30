@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-24 (List notes: thêm sort/order cho REST + MCP, mặc định modified-desc — FR-6)
+Cập nhật lần cuối: 2026-07-30 (đổi mật khẩu tổng → force logout mọi phiên owner khác qua rotate `auth.sessionSecret`)
 
 ---
 
@@ -26,6 +26,9 @@ Cập nhật lần cuối: 2026-07-24 (List notes: thêm sort/order cho REST + M
 - [x] M2.3 Middleware auth guard (httpOnly cookie), bảo vệ route
 - [x] M2.4 First-run setup flow (UI + env seed `WEBOBSIDIAN_PASSWORD`)
 - [x] M2.5 Pass mặc định 123456 + đổi mật khẩu (Settings→Account) + override khôi phục (`auth.passwordHash`/`WEBOBSIDIAN_PASSWORD`); migration pass cũ → `userPasswordHash`
+- [x] M2.6 Đổi mật khẩu → force logout mọi phiên owner khác: tách `auth.sessionSecret` (ký JWT owner)
+      khỏi `auth.jwtSecret` (ký unlock-cookie share công khai), rotate `sessionSecret` trong `setUserPassword()`;
+      `POST /auth/change-password` cấp lại cookie mới cho phiên hiện tại ngay sau khi rotate
 
 ## Phase 3 — Vault filesystem — FR-1
 - [x] M3.1 Service vault: list tree, read, write, create, rename/move, delete→trash
@@ -563,6 +566,18 @@ Cập nhật lần cuối: 2026-07-24 (List notes: thêm sort/order cho REST + M
       created/pagination/bogus-fallback đều đúng thứ tự; typecheck sạch.
 
 ### Nhật ký tiến độ
+- 2026-07-30 (M2.6 — đổi mật khẩu tổng force logout mọi phiên khác): trước đây JWT phiên owner
+  (`issueToken`/`verifyToken`, server/src/services/auth.ts) và unlock-cookie share công khai
+  (routes/shares.ts) dùng CHUNG `auth.jwtSecret`; đổi mật khẩu chỉ ghi `userPasswordHash` mới, không
+  đụng secret nên mọi token owner đã cấp (TTL 30 ngày, không có session store để thu hồi) vẫn hợp lệ
+  vô thời hạn sau khi đổi pass — nếu 1 thiết bị/trình duyệt bị lộ, đổi mật khẩu không cắt được phiên
+  đó. **Sửa:** thêm field `auth.sessionSecret` riêng cho JWT owner (settings.ts); `setUserPassword()`
+  rotate `sessionSecret` mỗi lần đổi pass → mọi token owner cũ hết hiệu lực ngay lập tức; route
+  `POST /auth/change-password` gọi `issueToken()` + set lại cookie ngay sau đó nên phiên vừa đổi pass
+  không tự văng mình. `auth.jwtSecret` giữ nguyên, không rotate theo, nên share-link công khai đang mở
+  không bị ảnh hưởng. Backfill secret mới cho settings.json cũ ở `loadSettings()` giống cách làm với
+  `jwtSecret`. Verify: `npm run typecheck` (server+web) và `npm --workspace server run build` sạch,
+  không lỗi type.
 - 2026-07-22 (MCP server nhúng vào web app — khai tử Cloudflare Worker, theo yêu cầu người dùng):
   trước đây MCP là Worker Cloudflare riêng (dịch giao thức MCP → REST `/api/v1`, key lưu Cloudflare
   KV, quản lý ở trang `/admin` tách biệt). Nay web app tự phục vụ giao thức MCP tại `POST /mcp?key=`

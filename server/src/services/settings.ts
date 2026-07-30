@@ -40,7 +40,12 @@ const SettingsSchema = z.object({
       userPasswordHash: z.string().default(''),
       // Mật khẩu override để khôi phục khi quên pass (sửa tay vào file). Rỗng = không có.
       passwordHash: z.string().default(''),
+      // Ký token public share (unlock cookie share-link). KHÔNG dùng cho owner session.
       jwtSecret: z.string().default(''),
+      // Ký JWT phiên đăng nhập owner. Tách riêng khỏi jwtSecret để khi đổi mật khẩu
+      // (rotate secret này) chỉ văng phiên owner, không phá unlock cookie của share-link
+      // đang hoạt động (ký bằng jwtSecret, độc lập với mật khẩu tổng).
+      sessionSecret: z.string().default(''),
     })
     .default({}),
   vault: z
@@ -123,6 +128,7 @@ let cache: Settings | null = null;
 function defaults(): Settings {
   const base = SettingsSchema.parse({});
   base.auth.jwtSecret = randomBytes(48).toString('hex');
+  base.auth.sessionSecret = randomBytes(48).toString('hex');
   base.vault.path = config.defaultVaultPath;
   base.vault.allowedRoots = config.allowedRoots.length
     ? config.allowedRoots
@@ -177,6 +183,10 @@ export async function loadSettings(): Promise<Settings> {
     let dirty = false;
     if (!parsed.auth.jwtSecret) {
       parsed.auth.jwtSecret = randomBytes(48).toString('hex');
+      dirty = true;
+    }
+    if (!parsed.auth.sessionSecret) {
+      parsed.auth.sessionSecret = randomBytes(48).toString('hex');
       dirty = true;
     }
     // Migration: trước đây `passwordHash` là mật khẩu đăng nhập. Mô hình mới coi

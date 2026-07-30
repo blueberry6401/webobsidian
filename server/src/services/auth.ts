@@ -56,6 +56,10 @@ export async function setUserPassword(password: string): Promise<void> {
   const hash = await hashPassword(password);
   await updateSettings((d) => {
     d.auth.userPasswordHash = hash;
+    // Rotate the session-signing secret: mọi JWT owner đã cấp trước đó (mọi
+    // thiết bị/tab đang đăng nhập) ký bằng secret cũ sẽ hết hiệu lực ngay lập
+    // tức. Route gọi hàm này tự cấp lại token mới cho phiên hiện tại.
+    d.auth.sessionSecret = randomBytes(48).toString('hex');
   });
 }
 
@@ -92,22 +96,22 @@ const TOKEN_TTL = '30d';
 
 export async function issueToken(): Promise<string> {
   const s = await getSettings();
-  return jwt.sign({ sub: 'owner' }, s.auth.jwtSecret, {
+  return jwt.sign({ sub: 'owner' }, s.auth.sessionSecret, {
     expiresIn: TOKEN_TTL,
     algorithm: 'HS256',
   });
 }
 
 /**
- * Xác minh token phiên CHỦ SỞ HỮU. Ngoài chữ ký hợp lệ, token bắt buộc phải có
- * `sub === 'owner'` và dùng đúng thuật toán HS256. Điều này ngăn các token khác
- * cũng ký bằng cùng `jwtSecret` (ví dụ unlock-cookie của share công khai, mang
- * `sub: 'share'`) bị tái sử dụng như một phiên owner đầy đủ.
+ * Xác minh token phiên CHỦ SỞ HỮU. Ký bằng `auth.sessionSecret` — tách riêng
+ * khỏi `auth.jwtSecret` (dùng cho unlock-cookie của share công khai) nên
+ * không thể tái sử dụng token share như phiên owner, và rotate secret này khi
+ * đổi mật khẩu (`setUserPassword`) không ảnh hưởng tới share-link đang mở.
  */
 export async function verifyToken(token: string): Promise<boolean> {
   try {
     const s = await getSettings();
-    const payload = jwt.verify(token, s.auth.jwtSecret, { algorithms: ['HS256'] });
+    const payload = jwt.verify(token, s.auth.sessionSecret, { algorithms: ['HS256'] });
     return typeof payload === 'object' && payload !== null && payload.sub === 'owner';
   } catch {
     return false;
