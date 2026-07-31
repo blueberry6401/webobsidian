@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { asyncHandler } from '../middleware/error.js';
 import { requireAuth } from '../middleware/auth.js';
 import { qmd } from '../services/search.js';
@@ -8,6 +8,7 @@ import { readPropertyTypes, setPropertyType } from '../services/propertytypes.js
 
 export const searchRouter = Router();
 searchRouter.use(requireAuth);
+searchRouter.use(express.json({ limit: '256kb' }));
 
 searchRouter.get(
   '/search',

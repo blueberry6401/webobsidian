@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { authenticateKey, type Scope } from '../services/apikeys.js';
 import { getSettings } from '../services/settings.js';
 import type { ApiKeyRecord } from '../services/settings.js';
+import { createSlidingWindowCounter } from '../lib/slidingwindow.js';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -12,21 +13,8 @@ declare global {
   }
 }
 
-// Simple in-memory sliding-window rate limiter, keyed per API key id.
-const hits = new Map<string, number[]>();
-
-function rateOk(keyId: string, perMin: number): boolean {
-  const now = Date.now();
-  const windowStart = now - 60_000;
-  const arr = (hits.get(keyId) ?? []).filter((t) => t > windowStart);
-  if (arr.length >= perMin) {
-    hits.set(keyId, arr);
-    return false;
-  }
-  arr.push(now);
-  hits.set(keyId, arr);
-  return true;
-}
+// Sliding-window rate limiter, keyed per API key id.
+const rateOk = createSlidingWindowCounter(60_000);
 
 function extractKey(req: Request): string {
   const xkey = req.headers['x-api-key'];

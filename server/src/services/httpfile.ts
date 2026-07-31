@@ -31,9 +31,24 @@ export async function sendFileWithRange(
     res.status(206);
     res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
     res.setHeader('Content-Length', String(end - start + 1));
-    createReadStream(absPath, { start, end }).pipe(res);
+    pipeWithErrorHandling(createReadStream(absPath, { start, end }), res);
     return;
   }
   res.setHeader('Content-Length', String(size));
-  createReadStream(absPath).pipe(res);
+  pipeWithErrorHandling(createReadStream(absPath), res);
+}
+
+/**
+ * `.pipe()` alone leaves the source stream's 'error' event unhandled — a race
+ * between stat() and the actual read (file deleted, or, for the public-share
+ * embed allowlist, a resolved path that turns out to be a directory: EISDIR)
+ * throws uncaught and leaves the response hanging open forever instead of
+ * ending it, leaking the connection.
+ */
+function pipeWithErrorHandling(stream: NodeJS.ReadableStream, res: Response): void {
+  stream.on('error', () => {
+    if (!res.headersSent) res.status(500);
+    res.end();
+  });
+  stream.pipe(res);
 }

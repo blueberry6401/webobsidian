@@ -43,9 +43,12 @@ npm run dev         # starts server (8787) + web (5173) together
   (gitignored — created on first boot).
 - **Login**: first load shows an unlock screen. Default password is
   `123456` (see `server/src/services/auth.ts`, `DEFAULT_PASSWORD`). Logging
-  in with it immediately forces a "Set a new password" screen — you cannot
-  stay on the default. This is intentional (`hasCustomPassword()` gate), not
-  a bug.
+  in through the web UI immediately forces a "Set a new password" screen —
+  that's an intentional client-side gate (`hasCustomPassword()`), not a bug.
+  It is UI-only, though: the API itself still accepts `123456` (and issues a
+  full session) until a real password is set, so a deployment driven purely
+  via the Agent API/MCP without ever opening the web UI stays on the default
+  password until something calls `POST /auth/change-password` explicitly.
 - Stop: `pkill -f "tsx watch src/index.ts"` and `pkill -f vite` (or kill the
   `npm run dev` process group / its PID if you captured it).
 
@@ -85,29 +88,26 @@ docker compose up -d --build
 - `VAULT_HOST_PATH` (default `./sample-vault`) is bind-mounted to `/vault`.
 - `webobsidian-data` named volume persists `settings.json` + search index
   across container recreation.
-- Set `WEBOBSIDIAN_PASSWORD` in `.env` to skip the first-run unlock UI.
+- `WEBOBSIDIAN_PASSWORD` in `.env` is a recovery override, not just a
+  first-run seed: it stays a valid login permanently, even after you set a
+  real password through the UI. Remove it from `.env` and redeploy once
+  you've logged in and changed your password.
 - Healthcheck hits `GET /healthz`.
 
 ## Production deployment
 
-Production runs on a **remote DigitalOcean droplet** (`<production-ip>`,
-`<production-domain>`), NOT on this machine. The droplet has a plain clone
-at `/opt/webobsidian` (remote `origin` = the fork) running behind Caddy via
-Docker. Redeploy:
+Production does NOT run on this machine. Deploy docs — per service, with the
+actual host, credentials, and redeploy command — live outside this repo in a
+private docs directory (`../_deployments/` relative to the repo root):
+`webobsidian-web.md` (this server) and `webobsidian-mcp.md` (the Cloudflare
+Worker). Read the relevant one before deploying.
 
-```bash
-ssh root@<production-ip> 'cd /opt/webobsidian && git pull && docker compose up -d --build'
-```
-
-The build runs on the 2GB droplet and can take several minutes — when running
-it over SSH from a tool with a command timeout, give it a long timeout or run
-it detached, otherwise the SSH session gets killed mid-build (looks like exit
-137 but the droplet keeps building).
-
-Deploy docs (per service, with infra details) live at
-`/Users/henry/Documents/Projects/_deployments/` — `webobsidian-web.md` (this
-server) and `webobsidian-mcp.md` (the Cloudflare Worker). Read the relevant one
-before deploying.
+This repo is public — do not paste production hostnames, IPs, or deploy
+commands back into any file that gets committed here (this one included).
+When redeploying over SSH from a tool with a command timeout: the remote
+build can take several minutes on a small droplet, so give it a long timeout
+or run it detached, otherwise the session gets killed mid-build (looks like
+exit 137 but the remote keeps building).
 
 ## Known gotchas hit this session
 

@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY server/package.json ./server/
 COPY web/package.json ./web/
-RUN npm install
+RUN npm ci
 COPY . .
 RUN npm run build
 
@@ -21,7 +21,7 @@ RUN apk add --no-cache git git-lfs && git lfs install --system
 # Install production deps for the server workspace only
 COPY package.json package-lock.json* ./
 COPY server/package.json ./server/
-RUN npm install --omit=dev --workspace server
+RUN npm ci --omit=dev --workspace server
 
 # Copy built artifacts
 COPY --from=build /app/server/dist ./server/dist

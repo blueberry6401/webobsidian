@@ -156,7 +156,10 @@ export function ensureVaultBrowsable(d: Settings): boolean {
 }
 
 async function ensureDataDir(): Promise<void> {
-  await fs.mkdir(config.dataDir, { recursive: true });
+  // mode is only applied when mkdir actually creates the directory (it's a
+  // no-op on an existing one), so this doesn't fight a deploy that already
+  // chown/chmod'd the volume differently.
+  await fs.mkdir(config.dataDir, { recursive: true, mode: 0o700 });
 }
 
 /** Atomic write: write to tmp then rename; keep a .bak of the previous file. */
@@ -213,8 +216,29 @@ export async function getSettings(): Promise<Settings> {
   return cache ?? (await loadSettings());
 }
 
+// Serialize every read-modify-write through this file. Without it, two
+// concurrent updateSettings() calls (e.g. an MCP `lastUsed` bump firing while
+// an admin revokes that same key) both clone the same pre-mutation snapshot,
+// and whichever finishes last silently overwrites the other's change — the
+// revoke (or a password change) can vanish from both the cache and disk while
+// the API that triggered it still reports success.
+let updateQueue: Promise<unknown> = Promise.resolve();
+
 /** Mutate settings via an updater fn, validate, persist, and refresh cache. */
-export async function updateSettings(
+export function updateSettings(
+  mutator: (draft: Settings) => void | Promise<void>,
+): Promise<Settings> {
+  const run = updateQueue.then(() => updateSettingsImpl(mutator));
+  // Keep the queue alive even if this update rejects — a failed mutator must
+  // not permanently wedge every later settings write behind it.
+  updateQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+async function updateSettingsImpl(
   mutator: (draft: Settings) => void | Promise<void>,
 ): Promise<Settings> {
   const current = await getSettings();

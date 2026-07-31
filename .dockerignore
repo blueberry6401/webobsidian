@@ -4,7 +4,9 @@ server/dist
 server/public
 web/dist
 data
+**/data
 .git
+**/.git
 *.log
 .DS_Store
 sample-vault
@@ -14,3 +16,13 @@ obsvault
 *.tsbuildinfo
 desktop/dist
 desktop/release
+# Runtime secrets and dev-session artifacts. Plain `data`/`.git` above only
+# match at the repo root — Docker's .dockerignore matches by path, not by
+# basename at every depth — so a worktree left under .claude/worktrees/*/data
+# (real settings.json, real jwtSecret) or a stray .env would otherwise still
+# get pulled into the build layer by `COPY . .`.
+.env
+.env.*
+.claude
+docs
+*.md

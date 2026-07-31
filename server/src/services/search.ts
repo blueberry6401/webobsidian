@@ -347,14 +347,16 @@ class QmdEngine {
 
   private async persist(): Promise<void> {
     try {
-      await fs.mkdir(config.dataDir, { recursive: true });
+      await fs.mkdir(config.dataDir, { recursive: true, mode: 0o700 });
       const payload = {
         mini: this.mini.toJSON(),
         snippets: [...this.snippets.entries()],
         tags: [...this.tagSet.entries()],
         propMeta: [...this.propMeta.entries()],
       };
-      await fs.writeFile(INDEX_FILE, JSON.stringify(payload));
+      // The index embeds every note's path + text snippets, same sensitivity
+      // as settings.json — keep it non-world-readable too.
+      await fs.writeFile(INDEX_FILE, JSON.stringify(payload), { mode: 0o600 });
     } catch {
       /* non-fatal */
     }

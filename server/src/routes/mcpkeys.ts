@@ -1,10 +1,11 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { asyncHandler } from '../middleware/error.js';
 import { requireAuth } from '../middleware/auth.js';
 import { listKeys, createKey, revokeKey } from '../services/mcpkeys.js';
 
 export const mcpKeysRouter = Router();
 mcpKeysRouter.use(requireAuth);
+mcpKeysRouter.use(express.json({ limit: '8kb' }));
 
 mcpKeysRouter.get('/', asyncHandler(async (_req, res) => res.json({ keys: await listKeys() })));
 

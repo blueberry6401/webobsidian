@@ -9,7 +9,9 @@ services:
       # Set HTTP_BIND=127.0.0.1 in .env to expose only to localhost (reverse proxy).
       - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-8787}:8787"
     environment:
-      # Set an initial password (otherwise set it on first-run in the UI)
+      # Recovery override password — always a valid login, even after you change
+      # your password in the UI. Leave empty to set your password on first run
+      # via the UI instead. See .env.example for the full explanation.
       WEBOBSIDIAN_PASSWORD: ${WEBOBSIDIAN_PASSWORD:-}
       # File-watch mode: auto (native + polling fallback) | polling. See .env.example.
       WEBOBSIDIAN_WATCH: ${WEBOBSIDIAN_WATCH:-auto}

@@ -1,6 +1,6 @@
-import { Router, type Request } from 'express';
+import express, { Router, type Request } from 'express';
 import { asyncHandler } from '../middleware/error.js';
-import { COOKIE_NAME, requireAuth } from '../middleware/auth.js';
+import { COOKIE_NAME, requireAuth, resolveCookieSecure } from '../middleware/auth.js';
 import {
   isPasswordSet,
   hasCustomPassword,
@@ -14,19 +14,14 @@ import { loginRateLimit } from '../middleware/ratelimit.js';
 
 export const authRouter = Router();
 
-// A `Secure` cookie is silently dropped by browsers over plain http://, so tying
-// it to NODE_ENV broke HTTP-only self-hosting (every API call 401'd → blank UI).
-// Default 'auto' = match the request's actual transport (honours X-Forwarded-Proto
-// via `trust proxy`); set COOKIE_SECURE=true/false to force.
-const COOKIE_SECURE = (process.env.COOKIE_SECURE ?? 'auto').toLowerCase();
+// Every body here is just one or two password fields — a couple KB is ample.
+const authJson = express.json({ limit: '2kb' });
 
 function cookieOpts(req: Request) {
-  const secure =
-    COOKIE_SECURE === 'true' ? true : COOKIE_SECURE === 'false' ? false : req.secure;
   return {
     httpOnly: true,
     sameSite: 'lax' as const,
-    secure,
+    secure: resolveCookieSecure(req),
     maxAge: 30 * 24 * 60 * 60 * 1000,
     path: '/',
   };
@@ -42,6 +37,7 @@ authRouter.get(
 
 authRouter.post(
   '/setup',
+  authJson,
   asyncHandler(async (req, res) => {
     if (await isPasswordSet()) {
       res.status(409).json({ error: 'Password already set' });
@@ -61,6 +57,7 @@ authRouter.post(
 authRouter.post(
   '/change-password',
   requireAuth,
+  authJson,
   asyncHandler(async (req, res) => {
     const { currentPassword, newPassword } = req.body ?? {};
     if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
@@ -88,6 +85,7 @@ authRouter.post(
 authRouter.post(
   '/login',
   loginRateLimit,
+  authJson,
   asyncHandler(async (req, res) => {
     const { password } = req.body ?? {};
     if (typeof password !== 'string' || !(await checkPassword(password))) {

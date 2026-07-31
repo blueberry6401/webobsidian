@@ -101,9 +101,11 @@ Open on macOS). Build it yourself with `npm run desktop:dist`; see
 [`desktop/README.md`](desktop/README.md) for details.
 
 > 🔑 **Default password is `123456`.** Log in right away, then change it in
-> **Settings → Account**. To seed a different password on first run, set
-> `WEBOBSIDIAN_PASSWORD` in `.env`. Forgot it? Set `WEBOBSIDIAN_PASSWORD` (plaintext) or
-> `auth.passwordHash` (scrypt) as a recovery override.
+> **Settings → Account**. `WEBOBSIDIAN_PASSWORD` in `.env` doubles as a recovery
+> override — set it and it stays a valid login *permanently*, even after you
+> change your password in the UI, so remove it from `.env` once you're back in.
+> A scrypt hash in `auth.passwordHash` works the same way if you'd rather not
+> keep the plaintext around.
 
 ### Point it at your own vault
 

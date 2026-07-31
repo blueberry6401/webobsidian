@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { asyncHandler } from '../middleware/error.js';
 import * as vault from '../services/vault.js';
 import type { TreeNode } from '../services/vault.js';
-import { getShareStatus, type ShareRecord } from '../services/shares.js';
+import { getShareStatus, withinShareFolder, type ShareRecord } from '../services/shares.js';
 import { isUnlocked, isMd, isCanvas, resolveInShareFolder } from './shares.js';
 import { renderNoteHtml, metaDescription, firstImage, escapeHtml, headingFoldScript } from '../services/renderhtml.js';
 import { renderCanvasHtml, canvasDescription, canvasFirstImage, canvasViewerScript } from '../services/rendercanvas.js';
@@ -258,6 +258,21 @@ function toShareRel(share: ShareRecord, rel: string): string {
   return rel === share.path ? '' : rel.slice(share.path.length + 1);
 }
 
+/**
+ * Scope check passed to renderCanvasHtml for a folder share: a canvas's
+ * markdown file-nodes may only pull content from inside the shared folder,
+ * not anywhere else in the vault. Re-resolves through resolveInShareFolder
+ * (not just the lexical `withinShareFolder` prefix check) so a symlink that
+ * lives inside the folder but points elsewhere in the vault is still caught.
+ */
+function folderCanvasScope(share: ShareRecord): (rel: string) => Promise<boolean> {
+  return async (rel: string) => {
+    if (!withinShareFolder(share.path, rel)) return false;
+    const resolved = await resolveInShareFolder(share, toShareRel(share, rel));
+    return resolved === rel;
+  };
+}
+
 /** OG description + image for a folder listing: item counts, first direct-child image. */
 async function folderMeta(
   share: ShareRecord,
@@ -450,7 +465,9 @@ sharePageRouter.get(
       const content = await vault.readFileText(rel);
       const isCv = isCanvas(rel);
       const fileUrl = (p: string) => `/public/shares/${share.id}/file?path=${encodeURIComponent(p)}`;
-      const html = isCv ? await renderCanvasHtml(content, fileUrl) : await renderNoteHtml(content, fileUrl);
+      const html = isCv
+        ? await renderCanvasHtml(content, fileUrl, folderCanvasScope(share))
+        : await renderNoteHtml(content, fileUrl);
       const title = name.replace(/\.(md|markdown|canvas)$/i, '');
       const desc = isCv ? canvasDescription(content) : metaDescription(content);
       const imgVault = isCv ? canvasFirstImage(content) : null;

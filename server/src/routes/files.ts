@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import multer from 'multer';
 import path from 'node:path';
 import { asyncHandler } from '../middleware/error.js';
@@ -15,6 +15,9 @@ import { sendFileWithRange } from '../services/httpfile.js';
 
 export const filesRouter = Router();
 filesRouter.use(requireAuth);
+// Note content (PUT /content) can legitimately be a few MB; the multipart
+// /upload route below is unaffected (different content-type, parsed by multer).
+filesRouter.use(express.json({ limit: '16mb' }));
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 512 * 1024 * 1024 } });
 

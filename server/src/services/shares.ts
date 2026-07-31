@@ -54,7 +54,7 @@ async function load(): Promise<ShareRecord[]> {
 
 /** Atomic write: tmp + rename (same pattern as settings.json). */
 async function persist(shares: ShareRecord[]): Promise<void> {
-  await fs.mkdir(config.dataDir, { recursive: true });
+  await fs.mkdir(config.dataDir, { recursive: true, mode: 0o700 });
   const tmp = `${SHARES_FILE}.tmp-${randomBytes(4).toString('hex')}`;
   await fs.writeFile(tmp, JSON.stringify(shares, null, 2), { mode: 0o600 });
   await fs.rename(tmp, SHARES_FILE);

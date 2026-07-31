@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -9,6 +9,7 @@ import { config } from '../config.js';
 
 export const settingsRouter = Router();
 settingsRouter.use(requireAuth);
+settingsRouter.use(express.json({ limit: '512kb' })); // includes html-preview prompt templates
 
 settingsRouter.get(
   '/',

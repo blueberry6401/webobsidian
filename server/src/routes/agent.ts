@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { asyncHandler } from '../middleware/error.js';
 import { requireApiKey } from '../middleware/apikey.js';
 import * as vault from '../services/vault.js';
@@ -18,6 +18,11 @@ function reindex(rel?: string) {
   if (rel) void qmd.upsert(rel).catch(() => {});
   void buildLinkGraph().catch(() => {});
 }
+
+// requireApiKey('write') runs first on both routes below — it only reads the
+// header/query key, not the body — so an unauthenticated caller is rejected
+// before this parses (and buffers) anything.
+const notesJson = express.json({ limit: '16mb' });
 
 agentRouter.get('/health', (_req, res) => res.json({ ok: true, service: 'webobsidian-agent-api', version: 'v1' }));
 
@@ -84,6 +89,7 @@ agentRouter.get(
 agentRouter.put(
   '/notes/*',
   requireApiKey('write'),
+  notesJson,
   asyncHandler(async (req, res) => {
     const rel = decodeURIComponent((req.params as any)[0]);
     const content = typeof req.body?.content === 'string' ? req.body.content : '';
@@ -114,6 +120,7 @@ agentRouter.put(
 agentRouter.patch(
   '/notes/*',
   requireApiKey('write'),
+  notesJson,
   asyncHandler(async (req, res) => {
     const rel = decodeURIComponent((req.params as any)[0]);
     const body: unknown = req.body;

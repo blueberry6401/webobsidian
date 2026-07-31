@@ -73,7 +73,13 @@ async function main() {
   // address (see middleware/ratelimit.ts), not the spoofable X-Forwarded-For.
   // Set TRUST_PROXY=false for a directly-exposed instance with no proxy.
   app.set('trust proxy', config.trustProxy);
-  app.use(express.json({ limit: '32mb' }));
+  // No app-level express.json() here on purpose: a body parser mounted before
+  // routing runs (and buffers up to its limit) for every request regardless of
+  // whether it's ever authenticated, which let an anonymous caller force a
+  // multi-MB allocation on any JSON route before hitting a 401. Each router
+  // instead mounts its own express.json() scoped to its actual needs, AFTER
+  // its auth gate wherever the gate doesn't itself require a parsed body
+  // (cookie/header/query-key auth all qualify) — see routes/*.ts.
   app.use(cookieParser());
 
   // Per-request CSP nonce — used by the SSR share page's inline <script>.

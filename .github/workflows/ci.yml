@@ -6,12 +6,24 @@ on:
   pull_request:
     branches: [main]
 
+# Default to the minimum a typecheck/build/docker-build workflow needs. Neither
+# job pushes commits, comments on PRs, or touches releases, so read-only is
+# sufficient — a compromised transitive dependency's install/build script
+# can't use this token to push to the repo.
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Typecheck & build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The checked-out token isn't needed after checkout (no push/PR-comment
+          # step follows) — don't leave it sitting in .git/config for a
+          # transitive install/build script to pick up.
+          persist-credentials: false
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -20,7 +32,11 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci || npm install
+        # No `|| npm install` fallback: that silently drops the lockfile the
+        # moment `npm ci` would fail on a mismatch, resolving whatever semver
+        # allows instead of what's actually pinned — exactly the case `npm ci`
+        # exists to catch.
+        run: npm ci
 
       - name: Typecheck
         run: npm run typecheck
@@ -39,6 +55,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Build image
         run: docker build -t webobsidian:ci .

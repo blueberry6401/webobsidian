@@ -70,8 +70,8 @@ docker compose up      # chạy full stack
 - Dev thường làm trong git worktree tạm (`.claude/worktrees/<session>/`) — nhánh đó **bị xoá**
   khi session đóng, nên fix phải được merge vào `main` ở checkout gốc (và push lên `fork`)
   trước khi kết thúc phiên, không được để trôi nổi chỉ trong worktree.
-- Tài liệu deploy production nằm ở `../_deployments/` (thư mục docs, KHÔNG phải clone): mỗi
-  service một file — `webobsidian-web.md` (server droplet DigitalOcean <production-ip>, deploy
-  qua `ssh root@... 'cd /opt/webobsidian && git pull && docker compose up -d --build'`) và
-  `webobsidian-mcp.md` (Worker Cloudflare, deploy qua `wrangler deploy`). ĐỌC file tương ứng
-  trước khi deploy.
+- Tài liệu deploy production nằm ở `../_deployments/` (thư mục docs, KHÔNG phải clone, KHÔNG
+  commit vào repo này): mỗi service một file — `webobsidian-web.md` (server) và
+  `webobsidian-mcp.md` (Worker Cloudflare). ĐỌC file tương ứng để lấy host/IP/lệnh deploy thật
+  trước khi deploy. Repo này là public — không dán IP, hostname, hay lệnh deploy thật vào bất
+  kỳ file nào sẽ commit ở đây (kể cả CLAUDE.md).

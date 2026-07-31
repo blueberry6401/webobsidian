@@ -1,12 +1,14 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import type { Request } from 'express';
 import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { asyncHandler } from '../middleware/error.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, resolveCookieSecure } from '../middleware/auth.js';
+import { shareUnlockRateLimit } from '../middleware/ratelimit.js';
 import * as vault from '../services/vault.js';
 import { resolveFile } from '../services/fileindex.js';
-import { hashPassword, verifyPassword } from '../services/auth.js';
+import { hashPassword, verifyPassword, MIN_PASSWORD_LEN } from '../services/auth.js';
 import { getSettings } from '../services/settings.js';
 import {
   listShares, createShare, setShareEnabled, setSharePassword, setShareExpiry, deleteShare,
@@ -34,6 +36,7 @@ function redact(rec: ShareRecord) {
 
 export const sharesRouter = Router();
 sharesRouter.use(requireAuth);
+sharesRouter.use(express.json({ limit: '8kb' }));
 
 sharesRouter.get(
   '/',
@@ -73,6 +76,10 @@ sharesRouter.patch(
     }
     if (hasPassword && password !== null && typeof password !== 'string') {
       res.status(400).json({ error: 'password must be a string or null' });
+      return;
+    }
+    if (hasPassword && password !== null && password.length < MIN_PASSWORD_LEN) {
+      res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LEN} characters` });
       return;
     }
     if (hasExpiresAt && expiresAt !== null && Number.isNaN(Date.parse(expiresAt))) {
@@ -141,6 +148,12 @@ async function resolveVaultPath(rel: string): Promise<string | null> {
  */
 export async function resolveInShareFolder(share: ShareRecord, subpath: string): Promise<string | null> {
   const clean = subpath.replace(/^\/+/, '');
+  // vault.listDir hides dotfiles/dotdirs from the folder listing the share UI
+  // renders, so a hidden file (backup, .obsidian config, …) never appears as a
+  // link — but without this check its content was still fetchable by guessing
+  // the name. Reject any subpath segment that starts with '.' to match what's
+  // actually visible.
+  if (clean.split('/').some((seg) => seg.startsWith('.'))) return null;
   const targetRel = clean ? `${share.path}/${clean}` : share.path;
   let abs: string;
   try {
@@ -170,6 +183,11 @@ export const publicSharesRouter = Router();
 const UNLOCK_TTL = '12h';
 const unlockCookie = (id: string) => `wo_share_${id}`;
 
+// Fingerprint (not the hash itself) embedded in the unlock JWT so that changing
+// or clearing a share's password invalidates every cookie issued under the old
+// one immediately, instead of leaving up to 12h of stale access.
+const passwordFingerprint = (hash: string) => createHash('sha256').update(hash).digest('hex').slice(0, 16);
+
 /** True when the share has no password, or the visitor carries a valid unlock cookie. */
 export async function isUnlocked(req: Request, share: ShareRecord): Promise<boolean> {
   if (!share.passwordHash) return true;
@@ -180,8 +198,13 @@ export async function isUnlocked(req: Request, share: ShareRecord): Promise<bool
     const payload = jwt.verify(token, s.auth.jwtSecret, { algorithms: ['HS256'] }) as {
       sub?: string;
       share?: string;
+      pv?: string;
     };
-    return payload.sub === 'share' && payload.share === share.id;
+    return (
+      payload.sub === 'share' &&
+      payload.share === share.id &&
+      payload.pv === passwordFingerprint(share.passwordHash)
+    );
   } catch {
     return false;
   }
@@ -191,6 +214,10 @@ export async function isUnlocked(req: Request, share: ShareRecord): Promise<bool
 // public endpoints (httpOnly so embedded <img> requests send it automatically).
 publicSharesRouter.post(
   '/:id/unlock',
+  // Rate limit first (cheap Map lookup) so an already-throttled caller never
+  // reaches the body parser; the body itself is just one password field.
+  shareUnlockRateLimit,
+  express.json({ limit: '2kb' }),
   asyncHandler(async (req, res) => {
     const status = await getShareStatus(req.params.id);
     if (status.status !== 'active') {
@@ -203,20 +230,25 @@ publicSharesRouter.post(
       return;
     }
     const password = String(req.body?.password ?? '');
-    if (!password || !(await verifyPassword(password, share.passwordHash))) {
+    // Reject oversized input before it reaches scrypt: verifyPassword costs a
+    // fixed ~16MB/100ms of libuv threadpool time regardless of input length,
+    // so an absurdly long password is pure amplification, not a real guess.
+    if (!password || password.length > 256 || !(await verifyPassword(password, share.passwordHash))) {
       res.status(401).json({ error: 'wrong password' });
       return;
     }
     const s = await getSettings();
-    const token = jwt.sign({ sub: 'share', share: share.id }, s.auth.jwtSecret, {
-      expiresIn: UNLOCK_TTL,
-      algorithm: 'HS256',
-    });
+    const token = jwt.sign(
+      { sub: 'share', share: share.id, pv: passwordFingerprint(share.passwordHash) },
+      s.auth.jwtSecret,
+      { expiresIn: UNLOCK_TTL, algorithm: 'HS256' },
+    );
     // Path '/' so both /public/shares/<id>/* (content, files) AND the SSR page
     // at /share/<id>[/f] receive it. The JWT is bound to this share id only.
     res.cookie(unlockCookie(share.id), token, {
       httpOnly: true,
       sameSite: 'lax',
+      secure: resolveCookieSecure(req),
       path: '/',
       maxAge: 12 * 60 * 60 * 1000,
     });
@@ -296,7 +328,7 @@ publicSharesRouter.get(
           : null;
     } else {
       const resolved = await resolveVaultPath(requested);
-      if (resolved && !isMd(resolved)) {
+      if (resolved && !isMd(resolved) && !(await vault.isDirectory(resolved))) {
         // Allowlist check: the resolved file must be one the shared note/canvas embeds.
         const content = await vault.readFileText(share.path);
         const targets = isCanvas(share.path) ? await canvasEmbedTargets(content) : embedTargets(content);

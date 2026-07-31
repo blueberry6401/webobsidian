@@ -18,13 +18,15 @@ on:
       - 'v*'
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   release:
     name: Build & publish (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Scoped to the job (not the whole workflow): only this job's electron-builder
+    # step needs to publish release assets, via the explicit GH_TOKEN env below —
+    # not via the checkout's persisted credentials, which are disabled entirely.
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -32,6 +34,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Node
         uses: actions/setup-node@v4

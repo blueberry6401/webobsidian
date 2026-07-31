@@ -1,10 +1,11 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { asyncHandler } from '../middleware/error.js';
 import { requireAuth } from '../middleware/auth.js';
 import { listKeys, createKey, revokeKey, type Scope } from '../services/apikeys.js';
 
 export const keysRouter = Router();
 keysRouter.use(requireAuth);
+keysRouter.use(express.json({ limit: '8kb' }));
 
 keysRouter.get('/', asyncHandler(async (_req, res) => res.json({ keys: await listKeys() })));
 

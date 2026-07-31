@@ -31,9 +31,27 @@ const PRESET: Record<string, string> = {
 const IMG_RE = /\.(png|jpe?g|gif|svg|webp|bmp|ico)$/i;
 const MD_RE = /\.(md|markdown)$/i;
 
+// Untrusted `.canvas` JSON (imported/downloaded then shared) may carry a `color`
+// that isn't actually a color — e.g. `red;position:fixed;inset:0;...` to break
+// out of the `--c:${col};border-color:${col};` declaration list it's spliced
+// into (rendercanvas.ts's `style` attr isn't sanitized like note markdown is).
+// Only accept a real color: a JSON Canvas preset key, #hex, or a bare CSS
+// color keyword — anything else (semicolons, url(), parens) is dropped.
+const SAFE_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+)$/;
+
 function resolveColor(c?: string): string | null {
   if (!c) return null;
-  return PRESET[c] ?? c;
+  const preset = PRESET[c];
+  if (preset) return preset;
+  return SAFE_COLOR_RE.test(c) ? c : null;
+}
+
+// Same untrusted-JSON concern for link nodes: only allow protocols a browser
+// would actually treat as a hyperlink, not `javascript:`/`data:`/etc.
+const SAFE_URL_RE = /^(https?|mailto):/i;
+
+function safeUrl(url: string): string {
+  return SAFE_URL_RE.test(url) ? url : '';
 }
 
 /** Coerce a JSON-supplied geometry field to a finite number. Untrusted `.canvas`
@@ -88,7 +106,14 @@ function bbox(nodes: CNode[]): Rect | null {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-async function renderNode(n: CNode, fileUrl: (p: string) => string): Promise<string> {
+/** Vault-relative path scope check for a canvas's markdown file-nodes. Omitted
+ *  (undefined) means "allow anything" — the existing behavior for file-kind
+ *  shares, whose single shared note/canvas is trusted to embed vault-wide by
+ *  design (mirrors ![[…]] resolution). Folder shares pass a real predicate so
+ *  a canvas can't pull in a note from outside the shared folder. */
+type FileAllowed = (rel: string) => boolean | Promise<boolean>;
+
+async function renderNode(n: CNode, fileUrl: (p: string) => string, isAllowed?: FileAllowed): Promise<string> {
   const col = resolveColor(n.color);
   const style = `left:${n.x}px;top:${n.y}px;width:${n.width}px;height:${n.height}px;` +
     (col ? `--c:${escapeHtml(col)};border-color:${escapeHtml(col)};` : '');
@@ -103,7 +128,10 @@ async function renderNode(n: CNode, fileUrl: (p: string) => string): Promise<str
   }
   if (n.type === 'link') {
     const url = n.url ?? '';
-    return `<div class="canvas-node canvas-link" style="${style}"><a class="canvas-link-body" href="${escapeHtml(url)}" target="_blank" rel="noopener nofollow"><span class="url">${escapeHtml(url)}</span></a></div>`;
+    const href = safeUrl(url);
+    return href
+      ? `<div class="canvas-node canvas-link" style="${style}"><a class="canvas-link-body" href="${escapeHtml(href)}" target="_blank" rel="noopener nofollow"><span class="url">${escapeHtml(url)}</span></a></div>`
+      : `<div class="canvas-node canvas-link" style="${style}"><span class="canvas-link-body url">${escapeHtml(url)}</span></div>`;
   }
   // file node
   const file = n.file ?? '';
@@ -113,8 +141,12 @@ async function renderNode(n: CNode, fileUrl: (p: string) => string): Promise<str
   const name = (file.split('/').pop() ?? file).replace(MD_RE, '');
   let body = '';
   if (MD_RE.test(file)) {
-    const md = await vault.readFileText(file).catch(() => null);
-    body = md ? await renderNoteHtml(md, fileUrl) : '';
+    if (!isAllowed || (await isAllowed(file))) {
+      const md = await vault.readFileText(file).catch(() => null);
+      body = md ? await renderNoteHtml(md, fileUrl) : '';
+    } else {
+      body = '<div class="canvas-file-outside-scope">This note is outside the shared folder.</div>';
+    }
   }
   return `<div class="canvas-node canvas-file" style="${style}"><div class="canvas-file-note"><div class="canvas-file-head"><span class="title">${escapeHtml(name)}</span></div><div class="canvas-file-body markdown-preview">${body}</div></div></div>`;
 }
@@ -123,7 +155,11 @@ async function renderNode(n: CNode, fileUrl: (p: string) => string): Promise<str
  * Render a `.canvas` document to a self-contained static HTML block. `fileUrl`
  * resolves a vault path (image / embed) to a public URL.
  */
-export async function renderCanvasHtml(raw: string, fileUrl: (p: string) => string): Promise<string> {
+export async function renderCanvasHtml(
+  raw: string,
+  fileUrl: (p: string) => string,
+  isAllowed?: FileAllowed,
+): Promise<string> {
   let data: { nodes?: CNode[]; edges?: CEdge[] };
   try { data = JSON.parse(raw); } catch { data = {}; }
   // Normalise geometry up front: every downstream use (style attrs, bbox, the
@@ -149,7 +185,7 @@ export async function renderCanvasHtml(raw: string, fileUrl: (p: string) => stri
 
   // Groups behind everything, then other nodes (matches the editor's z-order).
   const ordered = [...shifted.filter((n) => n.type === 'group'), ...shifted.filter((n) => n.type !== 'group')];
-  const nodeHtml = (await Promise.all(ordered.map((n) => renderNode(n, fileUrl)))).join('\n');
+  const nodeHtml = (await Promise.all(ordered.map((n) => renderNode(n, fileUrl, isAllowed)))).join('\n');
 
   const edgeSvg = edges.map((e) => {
     const a = byId.get(e.fromNode), b = byId.get(e.toNode);

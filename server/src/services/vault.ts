@@ -59,8 +59,12 @@ export async function resolveInVault(relPath: string): Promise<string> {
     throw Object.assign(new Error('Path escapes vault'), { status: 400 });
   }
   // Never resolve into the vault's own git metadata: an authenticated write to
-  // e.g. .git/hooks/post-merge would execute on the next git sync.
-  if (path.relative(root, abs).split(path.sep).includes('.git')) {
+  // e.g. .git/hooks/post-merge would execute on the next git sync. Compare
+  // lowercased: on a case-insensitive filesystem (APFS, NTFS, and any Docker
+  // bind-mount backed by one) `.GIT/hooks/post-merge` resolves to the exact
+  // same real file while lexically not matching '.git'.
+  const segsLower = path.relative(root, abs).split(path.sep).map((s) => s.toLowerCase());
+  if (segsLower.includes('.git') || segsLower.includes('.gitmodules') || segsLower.includes('.gitattributes')) {
     throw Object.assign(new Error('Path not allowed'), { status: 400 });
   }
   // Symlink guard: a symlink *inside* the vault could point outside it, which the

