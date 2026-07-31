@@ -572,7 +572,7 @@ git commit -m "docs: log outline navigation (click-to-jump + scroll-spy)"
 
 ### Task 7: Deploy production
 
-Merge nhánh worktree về `main` (fork), push, rebuild droplet `<production-domain>`. Theo `~/Documents/Projects/_deployments/webobsidian-web.md`.
+Merge nhánh worktree về `main` (fork), push, rebuild production droplet — host thật xem `~/Documents/Projects/_deployments/webobsidian-web.md`.
 
 - [ ] **Step 1: Merge về main + push fork**
 

@@ -1609,7 +1609,7 @@ Expected: exits 0.
 Read `../_deployments/webobsidian-web.md` first (per `CLAUDE.md`) for the current exact command and any since-updated caveats, then run (expect a multi-minute build on the 2GB droplet — run with a long timeout or in the background, per that doc's existing warning about SSH sessions getting cut mid-build):
 
 ```bash
-ssh root@<production-ip> 'cd /opt/webobsidian && git pull && docker compose up -d --build'
+ssh root@<production-ip> 'cd /opt/webobsidian && git pull && docker compose up -d --build'  # host thật: ../_deployments/webobsidian-web.md
 ```
 
 - [ ] **Step 6: Verify the deploy**

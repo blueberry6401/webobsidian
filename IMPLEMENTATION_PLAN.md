@@ -555,7 +555,7 @@ updateSettings, .git bypass, canvas containment, body-limit DoS, Docker/CI harde
       share có subfolder + `.canvas`, `curl ?path=<subfolder>` trả 404 nhanh (không treo),
       `curl ?path=<file>.canvas` trả 404 (không lộ JSON thô); trang SSR `/f` (root + subfolder) vẫn
       hoạt động đúng sau khi đổi `resolveInShareFolder` sang realpath.
-- [x] M33.7 Deploy prod (droplet `<production-domain>`), verify sau deploy.
+- [x] M33.7 Deploy prod (xem `../_deployments/webobsidian-web.md` cho host thật), verify sau deploy.
 
 ## Phase 34 — List notes: cho AI tự chọn thứ tự sắp xếp — FR-6 (theo yêu cầu người dùng)
 - [x] M34.1 `list_notes` (cả REST `GET /api/v1/notes` lẫn tool MCP) nhận `sort=name|modified|created`
@@ -792,9 +792,9 @@ pass) đều hoạt động đúng như thiết kế.
   404 qua mọi dạng path; file thật hợp lệ trong share vẫn 200 qua fallback (không phá case vừa sửa
   ở vòng 2). Sau 3 vòng review (1 Important + 5 Minor vòng 1, 1 Important vòng 2, 1 Important vòng 3
   — tất cả đã fix và verify sống trên dev server thật), merge fast-forward vào `main`, push `fork`,
-  deploy droplet `<production-domain>` qua `git pull && docker compose up -d --build`. Verify sau
+  deploy production (xem `../_deployments/webobsidian-web.md` cho host + lệnh deploy thật). Verify sau
   deploy: `git log -1` khớp commit cuối, `GET /healthz` `{"ok":true}` (cả nội bộ 127.0.0.1:8787 lẫn
-  qua `https://<production-domain>`), route mới `/share/<id-không-tồn-tại>` và `/share/<id>/f`
+  qua domain production), route mới `/share/<id-không-tồn-tại>` và `/share/<id>/f`
   trả 404 sạch (không crash), log container không có lỗi/exception. **Không** tự tạo folder share
   thật trên prod để test (không có mật khẩu đăng nhập prod — theo đúng quy ước bảo mật, không lưu ở
   đây) — phần này người dùng tự kiểm tra qua UI khi rảnh.
@@ -898,8 +898,8 @@ pass) đều hoạt động đúng như thiết kế.
   (CodeMirror ép `contentEditable=false` lên node widget gốc trả về từ `toDOM()`, và nested-contenteditable
   bên trong `.cm-content` mất focus vào tay CM mỗi lần Mod-A dù đã `stopPropagation()` — cả hai được giải
   quyết bằng cách chuyển sang `<input>` thật) → 7/7 kịch bản E2E pass → typecheck sạch. Tranh thủ dịp này sửa
-  luôn memory sai: `_deployment` (số ít, local) không phải prod — prod thật là droplet DigitalOcean
-  (`<production-domain>`), xem `~/Documents/Projects/_deployments/webobsidian-web.md`.
+  luôn memory sai: `_deployment` (số ít, local) không phải prod — prod thật là droplet DigitalOcean,
+  xem `~/Documents/Projects/_deployments/webobsidian-web.md` (host/domain thật, không commit vào repo).
 - 2026-06-27 (security fix — leo thang quyền qua token share): `verifyToken()` (server/src/services/auth.ts)
   chỉ kiểm tra chữ ký nên **mọi** token ký bằng `auth.jwtSecret` đều được chấp nhận như phiên owner. Endpoint
   public `POST /public/shares/:id/unlock` ký unlock-cookie bằng cùng secret → người được chia sẻ (có mật khẩu
@@ -1757,8 +1757,8 @@ pass) đều hoạt động đúng như thiết kế.
   vault tạm, thêm note qua API, `kill -TERM` ngay lập tức (mô phỏng restart giữa chừng), khởi động
   lại → search thấy note mới. Đối chứng: lùi code về bản cũ (`git stash`), lặp lại y hệt kịch bản →
   search trả `hits: []` (tái hiện đúng bug), xác nhận fix giải quyết đúng root cause chứ không phải
-  trùng hợp. Typecheck 2 workspace sạch. Việc deploy fix này lên droplet prod (`<production-ip>`) chờ
-  người dùng xác nhận trước khi restart service đang chạy vault thật.
+  trùng hợp. Typecheck 2 workspace sạch. Việc deploy fix này lên droplet prod chờ người dùng xác nhận
+  trước khi restart service đang chạy vault thật.
 - 2026-07-18 (Fix: trang folder-share KHÔNG cuộn được khi mở note dài — người dùng báo qua link thật
   `/share/<id>/f?path=Venue.md`): trang share 1 note cuộn được vì `.markdown-preview` (`flex:1;
   overflow-y:auto`) là flex-child TRỰC TIẾP của `.public-page` (cột flex cao 100vh) nên nó tự là vùng
