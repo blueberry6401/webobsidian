@@ -8,12 +8,21 @@ upstream), and known gotchas hit while verifying changes.
 
 This checkout (`/Users/henry/Documents/Projects/webobsidian`) has two remotes:
 
-- `origin` → `https://github.com/xnohat/webobsidian.git` — the **upstream**
-  repo this project was based on. Treat as **read-only reference** (pulling
-  upstream fixes), not a push target unless the user explicitly says so.
-- `fork` → `https://github.com/blueberry6401/webobsidian.git` — the user's
-  **own repo**. This is where local fixes get pushed (`git push fork
-  HEAD:main` or, once `main` is checked out here, `git push fork main`).
+- `origin` → `https://github.com/blueberry6401/webobsidian.git` — the user's
+  **own repo**. This is where local fixes get pushed (`git push origin
+  HEAD:main` or, once `main` is checked out here, `git push origin main`), and
+  what production pulls from.
+- `upstream` → `https://github.com/xnohat/webobsidian.git` — the repo this
+  project was based on. Treat as **read-only reference** (pulling upstream
+  fixes), not a push target unless the user explicitly says so.
+
+> **Renamed 2026-07-31.** These were previously swapped (`origin` = xnohat,
+> `fork` = blueberry6401). `claude --worktree` branches from `origin/HEAD` by
+> default (`worktree.baseRef: "fresh"`), so every worktree was created from
+> upstream's stale `v0.1.1` tip — a session could spend hours on a tree that
+> predated the MCP server. The conventional fork layout makes `"fresh"`
+> correct; `worktree.baseRef: "head"` in `~/.claude/settings.json` (user scope,
+> so a stale worktree can't shadow it) pins worktrees to the local `HEAD` too.
 
 `gh` is authenticated on this machine as `blueberry6401` (`gh auth status`
 confirms). `gh auth setup-git` has already been run once, which makes `git
@@ -22,10 +31,9 @@ if a fresh clone/environment hits `fatal: could not read Username for
 'https://github.com'`, that's the fix (re-run `gh auth setup-git`, or `gh
 auth login` first if `gh auth status` shows logged out).
 
-`local main` here is currently fast-forwarded to match `fork/main` (commit
-`db34858` — "fix: make bare URLs in Live Preview open on click"). `origin/main`
-is one commit behind (`c41967a`) — that gap is expected; it has **not** been
-pushed upstream, only to the fork.
+`local main` tracks `origin/main` and is kept in sync with it.
+`upstream/main` sits far behind at `c41967a` (`v0.1.1`) — that gap is expected;
+this work has **not** been pushed upstream, only to the user's own repo.
 
 ## Dev stack (hot-reload)
 

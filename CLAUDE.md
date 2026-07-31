@@ -51,24 +51,35 @@ docker compose up      # chạy full stack
 - Verify: `cd server && ../node_modules/.bin/tsx scripts/verify-mcp.ts` (server thật + MCP client thật).
 
 ## Remote git
-- **⚠️ BẮT BUỘC — LÀM ĐẦU TIÊN MỖI PHIÊN: base code trên `fork/main`, KHÔNG tin nhánh worktree
-  hiện tại.** Worktree tạm rất hay được tạo ở một commit CŨ, tụt lại sau `fork/main` cả trăm
-  commit (đã dính lỗi này NHIỀU lần). `fork/main` mới là nguồn sự thật đang chạy prod. Nếu code
+- **⚠️ BẮT BUỘC — LÀM ĐẦU TIÊN MỖI PHIÊN: base code trên `origin/main`, KHÔNG tin nhánh worktree
+  hiện tại.** Worktree tạm có thể được tạo ở một commit CŨ, tụt lại sau `origin/main` cả trăm
+  commit (đã dính lỗi này NHIỀU lần). `origin/main` mới là nguồn sự thật đang chạy prod. Nếu code
   trên base cũ rồi push thẳng sẽ **làm prod thụt lùi**. Quy trình đúng:
   ```bash
-  git fetch fork
-  git rev-list --left-right --count fork/main...HEAD   # số bên trái > 0 ⇒ ĐANG TỤT SAU
-  git reset --hard fork/main                            # đưa worktree về đúng base trước khi sửa
+  git fetch origin
+  git rev-list --left-right --count origin/main...HEAD  # số bên trái > 0 ⇒ ĐANG TỤT SAU
+  git reset --hard origin/main                          # đưa worktree về đúng base trước khi sửa
   ```
-  Chạy 3 lệnh này TRƯỚC khi đọc/sửa bất kỳ file nào. Chỉ khi `fork/main...HEAD` cho `0 0` (hoặc
+  Chạy 3 lệnh này TRƯỚC khi đọc/sửa bất kỳ file nào. Chỉ khi `origin/main...HEAD` cho `0 0` (hoặc
   chỉ có commit của chính phiên này ở bên phải) mới được tin nhánh hiện tại.
-- `origin` = repo gốc upstream (`xnohat/webobsidian`) — chỉ đọc/tham khảo, không push trừ khi
-  người dùng yêu cầu rõ.
-- `fork` = repo riêng của người dùng (`blueberry6401/webobsidian`) — đích push mặc định cho các
-  fix/tính năng. `gh` đã auth sẵn trên máy này với tài khoản `blueberry6401`
+  **Chú ý — chính file này cũng có thể là bản cũ:** worktree tách từ commit cũ thì CLAUDE.md bạn
+  đang đọc cũng cũ theo, nên "không thấy cảnh báo" KHÔNG phải bằng chứng base đúng. Cứ chạy 3 lệnh.
+- `origin` = repo của người dùng (`blueberry6401/webobsidian`) — **đích push mặc định**, và là
+  nguồn `git pull` của prod. `gh` đã auth sẵn trên máy này với tài khoản `blueberry6401`
   (`gh auth setup-git` đã chạy để `git push` qua HTTPS dùng token của gh).
+- `upstream` = repo gốc (`xnohat/webobsidian`) — chỉ đọc/tham khảo, **không push** trừ khi người
+  dùng yêu cầu rõ; nhánh này đứng yên ở `v0.1.1` từ lâu.
+  > Trước 2026-07-31 hai remote **ngược tên** (`origin` = xnohat, `fork` = blueberry6401). Vì
+  > `claude --worktree` mặc định (`worktree.baseRef: "fresh"`) tách nhánh từ `origin/HEAD`, mọi
+  > worktree đều đẻ ra từ `v0.1.1` — một phiên có thể code hàng giờ trên cây cũ hơn cả MCP server.
+  > Đã đổi tên remote cho đúng quy ước GitHub fork, và đặt `worktree.baseRef: "head"` trong
+  > `~/.claude/settings.json` (user scope, nằm ngoài repo nên worktree cũ không che được).
+- **Trước khi `git commit`, LUÔN chạy `git status` và đọc kỹ.** Repo gốc có thể đang dở một merge
+  (nhiều phiên Claude chạy song song trên cùng máy). `git commit` khi có `MERGE_HEAD` sẽ tạo
+  **merge commit nuốt trọn index**, không chỉ file bạn `git add` — đã xảy ra: một commit "docs"
+  vô tình gộp cả một bản vá bảo mật 36 file của phiên khác vào dưới nhãn của mình.
 - Dev thường làm trong git worktree tạm (`.claude/worktrees/<session>/`) — nhánh đó **bị xoá**
-  khi session đóng, nên fix phải được merge vào `main` ở checkout gốc (và push lên `fork`)
+  khi session đóng, nên fix phải được merge vào `main` ở checkout gốc (và push lên `origin`)
   trước khi kết thúc phiên, không được để trôi nổi chỉ trong worktree.
 - Tài liệu deploy production nằm ở `../_deployments/` (thư mục docs, KHÔNG phải clone, KHÔNG
   commit vào repo này): mỗi service một file — `webobsidian-web.md` (server) và
