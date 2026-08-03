@@ -55,7 +55,9 @@ async function mcpAuthGate(req: Request, res: Response, next: NextFunction): Pro
 }
 
 mcpRouter.all('/', mcpAuthGate, express.json({ limit: '32mb' }), async (req: Request, res: Response) => {
-  const server = createMcpServer();
+  // Link do các tool transfer trả về phải tuyệt đối (người dùng bấm trong
+  // claude.ai, hoặc vault khác fetch) — dựng từ chính request này.
+  const server = createMcpServer(`${req.protocol}://${req.get('host')}`);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on('close', () => {
     void transport.close();

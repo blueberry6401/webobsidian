@@ -1,10 +1,16 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import path from 'node:path';
+import { promises as fsp } from 'node:fs';
 import * as vault from './vault.js';
 import { qmd } from './search.js';
 import { backlinksFor, buildLinkGraph } from './links.js';
 import { applyEdit } from './noteedit.js';
 import { contentVersion } from './noteversion.js';
+import { createZip, extractZip, type OnConflict } from './archive.js';
+import { createDownloadTicket, createUploadTicket, getTicket, transferDir, TTL_MS } from './transfer.js';
+import { fetchZipToFile } from './fetchzip.js';
+import { reindexAfterExtract } from '../routes/transfer.js';
 
 type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean };
 
@@ -24,7 +30,37 @@ function reindex(rel?: string): void {
   void buildLinkGraph().catch(() => {});
 }
 
-export function createMcpServer(): McpServer {
+const MAX_DOWNLOAD_FILES = 5_000;
+const MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024;
+const CONFLICT = z.enum(['rename', 'overwrite', 'skip']);
+
+/** Làm phẳng cây vault thành danh sách đường dẫn file. `listTree` đã bỏ dotfile
+ *  (`.obsidian`, `.trash`, `.git`) và `node_modules` — đúng ngữ nghĩa loại trừ
+ *  ta muốn cho việc đóng gói. */
+function flattenTree(node: vault.TreeNode, out: string[] = []): string[] {
+  if (node.type === 'file' && node.path) out.push(node.path);
+  for (const c of node.children ?? []) flattenTree(c, out);
+  return out;
+}
+
+async function collectFiles(paths?: string[], folder?: string): Promise<string[]> {
+  if (paths?.length) {
+    const missing: string[] = [];
+    for (const p of paths) if (!(await vault.exists(p))) missing.push(p);
+    if (missing.length) throw new Error(`Không tìm thấy: ${missing.join(', ')}`);
+    return paths;
+  }
+  const all = flattenTree(await vault.listTree());
+  const f = (folder ?? '').replace(/^\/+|\/+$/g, '');
+  return f ? all.filter((p) => p === f || p.startsWith(f + '/')) : all;
+}
+
+/**
+ * `baseUrl` được dựng từ request (protocol + Host) ở `routes/mcp.ts`: tool trả
+ * về link tuyệt đối để người dùng bấm được ngay trong claude.ai, và để vault
+ * khác fetch được qua `upload_from_url`.
+ */
+export function createMcpServer(baseUrl: string): McpServer {
   const server = new McpServer({ name: 'webobsidian', version: '0.1.0' });
   const RO = { readOnlyHint: true } as const;
   const DESTRUCTIVE = { destructiveHint: true } as const;
@@ -250,6 +286,135 @@ export function createMcpServer(): McpServer {
         qmd.remove(path);
         reindex();
         return `Đã xóa (vào trash) ${path} → ${trashed}`;
+      }),
+  );
+
+  server.registerTool(
+    'download_files',
+    {
+      description:
+        'Đóng gói file trong vault thành một file ZIP và trả về LINK TẢI tạm thời (30 phút). ' +
+        'Chọn bằng paths (danh sách đường dẫn) và/hoặc folder (tiền tố path); bỏ trống cả hai = cả vault. ' +
+        'Bỏ qua .trash và dotfile (.obsidian, .git). Lấy được MỌI loại file, kể cả ảnh và file nhị phân. ' +
+        'Để chuyển sang vault khác: đưa url trả về đây cho tool upload_from_url của vault đích — ' +
+        'nội dung đi thẳng server sang server, không tốn token.',
+      inputSchema: {
+        paths: z.array(z.string()).optional(),
+        folder: z.string().optional(),
+      },
+      annotations: RO,
+    },
+    ({ paths, folder }) =>
+      run(async () => {
+        const rels = await collectFiles(paths, folder);
+        if (!rels.length) throw new Error('Không có file nào khớp lựa chọn');
+        if (rels.length > MAX_DOWNLOAD_FILES)
+          throw new Error(`${rels.length} file, vượt giới hạn ${MAX_DOWNLOAD_FILES}`);
+        const entries: { abs: string; rel: string }[] = [];
+        let raw = 0;
+        for (const rel of rels) {
+          const abs = await vault.resolveInVault(rel);
+          raw += (await fsp.stat(abs)).size;
+          if (raw > MAX_DOWNLOAD_BYTES)
+            throw new Error(`Tổng dung lượng vượt giới hạn ${MAX_DOWNLOAD_BYTES} byte`);
+          entries.push({ abs, rel });
+        }
+        const dir = await transferDir();
+        const stem = (folder ?? '').replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'vault';
+        const zipPath = path.join(dir, `dl-${Date.now()}-${Math.random().toString(36).slice(2)}.zip`);
+        const meta = await createZip(entries, zipPath);
+        const t = createDownloadTicket({ zipPath, filename: `${stem}.zip`, ...meta });
+        return {
+          url: `${baseUrl}/transfer/d/${t.id}`,
+          fileCount: meta.fileCount,
+          bytes: meta.bytes,
+          expiresAt: new Date(t.expiresAt).toISOString(),
+          hint: 'Người dùng bấm url này để tải về; hoặc đưa nó cho upload_from_url của vault đích để chuyển tự động.',
+        };
+      }),
+  );
+
+  server.registerTool(
+    'upload_from_url',
+    {
+      description:
+        'Tải một file ZIP từ url rồi GIẢI NÉN thẳng vào vault này. Ghép với link do download_files của ' +
+        'vault khác sinh ra thì chuyển file giữa hai vault HOÀN TOÀN TỰ ĐỘNG, người dùng không phải thao tác gì ' +
+        'và nội dung không đi qua context. Chạy đồng bộ, trả ngay danh sách file đã ghi. ' +
+        'on_conflict mặc định rename (không ghi đè file sẵn có). Thao tác phá hủy.',
+      inputSchema: {
+        url: z.string().url(),
+        dest_folder: z.string().optional(),
+        on_conflict: CONFLICT.optional(),
+      },
+      annotations: DESTRUCTIVE,
+    },
+    ({ url, dest_folder, on_conflict }) =>
+      run(async () => {
+        const dir = await transferDir();
+        const tmp = path.join(dir, `fetch-${Date.now()}-${Math.random().toString(36).slice(2)}.zip`);
+        try {
+          const { bytes } = await fetchZipToFile(url, tmp);
+          const result = await extractZip(
+            tmp,
+            (dest_folder ?? '').replace(/^\/+|\/+$/g, ''),
+            (on_conflict ?? 'rename') as OnConflict,
+          );
+          reindexAfterExtract(result.written);
+          return { downloadedBytes: bytes, ...result };
+        } finally {
+          await fsp.rm(tmp, { force: true }).catch(() => {});
+        }
+      }),
+  );
+
+  server.registerTool(
+    'upload_files',
+    {
+      description:
+        'Tạo link để NGƯỜI DÙNG tải file zip lên vault bằng trình duyệt. Tool này CHƯA ghi gì cả — nó chỉ ' +
+        'trả về một URL có hạn 30 phút và dùng đúng một lần; người dùng phải tự mở URL đó rồi kéo file zip vào. ' +
+        'Dùng khi file nằm trên máy người dùng. Nếu nguồn là một vault khác thì ĐỪNG dùng tool này — ' +
+        'dùng upload_from_url, nó tự động và không cần thao tác tay. ' +
+        'Sau khi người dùng báo đã tải xong, gọi transfer_status với ticket trả về ở đây để biết kết quả.',
+      inputSchema: {
+        dest_folder: z.string().optional(),
+        on_conflict: CONFLICT.optional(),
+      },
+      annotations: DESTRUCTIVE,
+    },
+    ({ dest_folder, on_conflict }) =>
+      run(async () => {
+        const t = createUploadTicket({
+          destFolder: (dest_folder ?? '').replace(/^\/+|\/+$/g, ''),
+          onConflict: (on_conflict ?? 'rename') as OnConflict,
+        });
+        return {
+          url: `${baseUrl}/transfer/u/${t.id}`,
+          ticket: t.id,
+          destFolder: t.destFolder || '(gốc vault)',
+          onConflict: t.onConflict,
+          expiresAt: new Date(t.expiresAt).toISOString(),
+          hint: `Người dùng mở link này và kéo file zip vào. Hết hạn sau ${TTL_MS / 60000} phút, dùng một lần.`,
+        };
+      }),
+  );
+
+  server.registerTool(
+    'transfer_status',
+    {
+      description:
+        'Xem kết quả của một ticket do upload_files tạo: đã ghi file nào, bỏ qua gì, lỗi gì. ' +
+        'Gọi sau khi người dùng báo đã kéo file zip lên xong.',
+      inputSchema: { ticket: z.string() },
+      annotations: RO,
+    },
+    ({ ticket }) =>
+      run(async () => {
+        const t = getTicket(ticket);
+        if (!t) throw new Error('Ticket không tồn tại hoặc đã hết hạn');
+        if (t.kind !== 'upload') throw new Error('Đây là ticket tải, không có trạng thái ghi');
+        return { status: t.status, destFolder: t.destFolder || '(gốc vault)', result: t.result, error: t.error };
       }),
   );
 
