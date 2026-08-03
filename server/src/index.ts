@@ -28,6 +28,8 @@ import { agentRouter } from './routes/agent.js';
 import { uiStateRouter } from './routes/uistate.js';
 import { sharesRouter, publicSharesRouter } from './routes/shares.js';
 import { sharePageRouter } from './routes/sharepage.js';
+import { transferRouter } from './routes/transfer.js';
+import { cleanTransferDir, startSweeper } from './services/transfer.js';
 import { htmlPreviewRouter } from './routes/htmlpreview.js';
 import { sweepInterruptedOnBoot } from './services/htmlpreview.js';
 import { initSearch, qmd } from './services/search.js';
@@ -140,6 +142,7 @@ async function main() {
   app.use('/api/shares', sharesRouter); // manage public share links (auth)
   app.use('/public/shares', publicSharesRouter); // shared-note content (NO auth)
   app.use('/share', sharePageRouter); // SSR public share page (NO auth, SEO/OG meta)
+  app.use('/transfer', transferRouter); // bulk file transfer zip (NO auth, token in URL — FR-16)
   app.use('/api/html-preview', htmlPreviewRouter); // LLM-generated HTML previews (auth)
   app.use('/api', searchRouter); // /api/search, /api/tags, /api/backlinks, /api/graph...
 
@@ -154,13 +157,22 @@ async function main() {
     app.all(['/.well-known/*', '/register'], (_req, res) => {
       res.status(404).json({ error: 'not_found' });
     });
+    // '/transfer' MUST be in this list: without it the catch-all answers every
+    // /transfer/* URL with the SPA's 200 HTML, so the download link serves HTML
+    // instead of the zip and the drag-and-drop page never renders. Same trap as
+    // the OAuth-discovery paths above — see docs/MCP.md.
     app.get('*', (req, res, next) => {
-      if (req.path.startsWith('/api') || req.path.startsWith('/auth') || req.path.startsWith('/public') || req.path.startsWith('/mcp')) return next();
+      if (req.path.startsWith('/api') || req.path.startsWith('/auth') || req.path.startsWith('/public') || req.path.startsWith('/mcp') || req.path.startsWith('/transfer')) return next();
       res.sendFile(path.join(publicDir, 'index.html'));
     });
   }
 
   app.use(errorHandler);
+
+  // Transfer tickets live in memory, so any zip left in data/transfer from a
+  // previous run is orphaned — no ticket can ever reference it again.
+  await cleanTransferDir();
+  startSweeper();
 
   // Build search index + link graph
   console.log('[boot] indexing vault...');
