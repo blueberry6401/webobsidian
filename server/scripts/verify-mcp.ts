@@ -166,6 +166,19 @@ async function main() {
     const mdRel = 'Chuyển/Ghi chú có dấu.md';
     await client.callTool({ name: 'write_note', arguments: { path: mdRel, content: 'nội dung tiếng Việt', base_version: '' } });
 
+    // Hồi quy cho lỗ hổng đã khiến bản fa75f21 bị GỠ khỏi prod (2026-07-31):
+    // đường dẫn tường minh không đi qua bộ lọc dotfile nên tải được .trash và
+    // data.json của plugin trong .obsidian (chứa token).
+    await fsp.mkdir(path.join(vaultA, '.obsidian', 'plugins', 'x'), { recursive: true });
+    await fsp.writeFile(path.join(vaultA, '.obsidian/plugins/x/data.json'), '{"token":"BI-MAT"}');
+    const leak = await client.callTool({
+      name: 'download_files',
+      arguments: { paths: ['.obsidian/plugins/x/data.json'] },
+    });
+    check('download_files TỪ CHỐI đường dẫn tường minh vào .obsidian', (leak as any).isError === true && textOf(leak).includes('file ẩn'), textOf(leak));
+    const leak2 = await client.callTool({ name: 'download_files', arguments: { paths: ['.trash/x.md'] } });
+    check('download_files TỪ CHỐI đường dẫn tường minh vào .trash', (leak2 as any).isError === true, textOf(leak2));
+
     const dl = await client.callTool({ name: 'download_files', arguments: {} });
     const dlJson = JSON.parse(textOf(dl));
     check('download_files trả link + đếm đủ file', typeof dlJson.url === 'string' && dlJson.fileCount >= 2, dlJson);
@@ -188,6 +201,8 @@ async function main() {
     check('file nhị phân khớp từng byte sau khi chuyển', gotBin.equals(binBytes), { got: [...gotBin], want: [...binBytes] });
     const gotMd = await fsp.readFile(path.join(vaultB, mdRel), 'utf8');
     check('file tên có dấu khớp nội dung', gotMd === 'nội dung tiếng Việt', gotMd);
+    // .obsidian của A KHÔNG được lọt sang B qua đường đóng gói cả vault
+    check('zip cả vault KHÔNG chứa .obsidian', !existsSync(path.join(vaultB, '.obsidian')), 'rò .obsidian sang vault B');
 
     // rename: chuyển lần hai không được ghi đè bản đã có
     const up2 = await clientB.callTool({ name: 'upload_from_url', arguments: { url: dlJson.url } });

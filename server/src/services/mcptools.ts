@@ -7,7 +7,7 @@ import { qmd } from './search.js';
 import { backlinksFor, buildLinkGraph } from './links.js';
 import { applyEdit } from './noteedit.js';
 import { contentVersion } from './noteversion.js';
-import { createZip, extractZip, type OnConflict } from './archive.js';
+import { createZip, extractZip, isExcludedFromExport, type OnConflict } from './archive.js';
 import { createDownloadTicket, createUploadTicket, getTicket, transferDir, TTL_MS } from './transfer.js';
 import { fetchZipToFile } from './fetchzip.js';
 import { reindexAfterExtract } from '../routes/transfer.js';
@@ -45,6 +45,12 @@ function flattenTree(node: vault.TreeNode, out: string[] = []): string[] {
 
 async function collectFiles(paths?: string[], folder?: string): Promise<string[]> {
   if (paths?.length) {
+    // Danh sách tường minh KHÔNG đi qua listTree nên phải tự lọc dotfile — bỏ
+    // bước này chính là lỗ hổng khiến bản fa75f21 bị gỡ khỏi prod (2026-07-31):
+    // `.trash/*` và `.obsidian/plugins/*/data.json` tải được.
+    const blocked = paths.filter((p) => isExcludedFromExport(p));
+    if (blocked.length)
+      throw new Error(`Không cho phép đóng gói file ẩn/hệ thống: ${blocked.join(', ')}`);
     const missing: string[] = [];
     for (const p of paths) if (!(await vault.exists(p))) missing.push(p);
     if (missing.length) throw new Error(`Không tìm thấy: ${missing.join(', ')}`);

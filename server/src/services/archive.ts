@@ -7,6 +7,7 @@
 import path from 'node:path';
 import { createWriteStream, promises as fs } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
+import type { Readable } from 'node:stream';
 import archiver from 'archiver';
 import yauzl from 'yauzl';
 import * as vault from './vault.js';
@@ -19,6 +20,21 @@ export const MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024;
 
 /** Segment không bao giờ được ghi từ một archive. */
 const FORBIDDEN_SEGMENTS = new Set(['.trash', '.git', '.gitmodules', '.gitattributes']);
+
+/**
+ * Đường dẫn có bị loại khỏi việc ĐÓNG GÓI không (dotfile, .git, node_modules)?
+ *
+ * `vault.listTree()` đã lọc sẵn, nhưng `download_files` còn nhận danh sách
+ * `paths` TƯỜNG MINH — đường đó không đi qua listTree nên phải lọc riêng ở đây.
+ * Đúng chỗ này là lỗ hổng đã khiến bản `fa75f21` bị gỡ khỏi production ngày
+ * 2026-07-31: bộ lọc dotfile không áp cho đường dẫn truyền thẳng vào, nên
+ * `.trash` và `data.json` của plugin trong `.obsidian` (chứa token) tải được.
+ */
+export function isExcludedFromExport(rel: string): boolean {
+  const segs = rel.replace(/\\/g, '/').split('/').filter(Boolean);
+  if (!segs.length) return true;
+  return segs.some((s) => s.startsWith('.') || s === 'node_modules');
+}
 
 /**
  * Chuẩn hoá + kiểm tra một đường dẫn entry trong ZIP. Trả về đường dẫn
@@ -114,7 +130,8 @@ export async function extractZip(
   const result: ExtractResult = { written: [], skipped: [], errors: [] };
   const dest = destFolder.replace(/^[/\\]+|[/\\]+$/g, '');
   let entryCount = 0;
-  let totalBytes = 0;
+  let totalBytes = 0; // theo header (rẻ, chặn sớm) — KHÔNG đáng tin một mình
+  let actualBytes = 0; // byte thật đã đọc ra — mới là ngưỡng thực thi
 
   const zipfile = await new Promise<yauzl.ZipFile>((resolve, reject) => {
     yauzl.open(zipPath, { lazyEntries: true, autoClose: true }, (err, zf) => {
@@ -158,11 +175,27 @@ export async function extractZip(
           }
           // Lớp phòng thủ thứ hai: resolveInVault chặn traversal + symlink + .git.
           const abs = await vault.resolveInVault(picked.target);
+          // Ghi đè thì đẩy bản cũ vào trash trước, KHÔNG xoá thẳng — bản trước
+          // (fa75f21) bị gỡ khỏi prod một phần vì ghi đè không qua trash nên mất
+          // dữ liệu không khôi phục được.
+          if (onConflict === 'overwrite' && (await vault.exists(picked.target))) {
+            await vault.trash(picked.target).catch(() => {});
+          }
           await fs.mkdir(path.dirname(abs), { recursive: true });
           const rs = await new Promise<NodeJS.ReadableStream>((res, rej) => {
             zipfile.openReadStream(entry, (err, s) =>
               err || !s ? rej(err ?? new Error('Không mở được stream entry')) : res(s),
             );
+          });
+          // Đếm byte THỰC SỰ đọc ra, không tin `uncompressedSize` trong header:
+          // đó là metadata do kẻ tạo zip điều khiển, khai thấp là qua mặt được
+          // ngưỡng ở trên. Đây là lỗ hổng zip bomb đã khiến bản fa75f21 bị gỡ
+          // (body 1,2 MB làm RSS phồng lên 1,58 GB).
+          rs.on('data', (c: Buffer) => {
+            actualBytes += c.length;
+            if (actualBytes > MAX_TOTAL_BYTES) {
+              (rs as Readable).destroy(new Error('Zip vượt giới hạn 2 GB sau khi giải nén'));
+            }
           });
           await pipeline(rs, createWriteStream(abs));
           vault.invalidateStat(picked.target);

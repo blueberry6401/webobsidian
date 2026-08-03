@@ -689,9 +689,18 @@ Kế hoạch: `docs/superpowers/plans/2026-08-03-mcp-vault-transfer.md`
 - [x] M36.6 E2E: `verify-mcp.ts` dựng **2 server + 2 vault**, chạy round-trip `download_files` ở A →
       `upload_from_url` ở B, so khớp **byte từng file** gồm một file nhị phân và một tên có dấu tiếng Việt.
 
-Verify chung cho cả phase: `npm run typecheck` sạch; `npm --workspace server run test` 63/63
-(archive 16 + round-trip 9 + transfer 11 + fetchzip 16 + shares 11); `npm run build` sạch;
-`scripts/verify-mcp.ts` **38/38** với 2 server + 2 vault thật.
+- [x] M36.7 Đối chiếu với bản `fa75f21` ĐÃ BỊ GỠ khỏi prod 2026-07-31 (xem `_deployments/`):
+      vá cả 3 phát hiện, mỗi cái một test hồi quy. (a) **Đã tái lặp lỗi #1** — `download_files`
+      nhận `paths` tường minh không đi qua `listTree` nên tải được `.trash` và `data.json` của
+      plugin trong `.obsidian`; thêm `isExcludedFromExport()`. (b) Zip bomb: không tin
+      `uncompressedSize` trong header (metadata do kẻ tấn công điều khiển), thực thi ngưỡng trên
+      **byte thật đọc ra**. (c) `on_conflict: overwrite` đẩy bản cũ vào trash trước khi ghi đè;
+      mặc định vẫn là `rename` (không bao giờ ghi đè).
+
+Verify chung cho cả phase: `npm run typecheck` sạch; `npm --workspace server run test` **70/70**
+(archive 21 + round-trip 11 + transfer 11 + fetchzip 16 + shares 11); `npm --workspace web run test`
+34/34; `npm run build` sạch; `scripts/verify-mcp.ts` **41/41** với 2 server + 2 vault thật;
+`verify-mcp-keys.ts` 14/14.
 
 ### Nhật ký tiến độ
 - 2026-08-03 (Phase 36 — MCP truyền file hàng loạt): hai lỗi chỉ lộ ra nhờ test chạy thật, không
@@ -706,7 +715,12 @@ Verify chung cho cả phase: `npm run typecheck` sạch; `npm --workspace server
   chặn `.git`/`.trash`. Tương tự, e2e chạy trước `npm run build` thì `server/public` không tồn
   tại nên SPA catch-all không được mount, khiến các check "/transfer không bị SPA nuốt" xanh vô
   nghĩa — đã thêm assertion chứng minh catch-all đang bật trước khi tin các check đó. Đánh đổi
-  có ý thức: guard SSRF không chặn dải LAN riêng (hai vault self-hosted thường cùng mạng nội bộ,
+  **Quan trọng nhất**: tài liệu deploy (`_deployments/webobsidian-web.md`) ghi rằng một bản gần
+  như y hệt (`fa75f21`, MCP 14 tool) ĐÃ deploy lên prod rồi bị gỡ ngày 2026-07-31 vì 3 lỗ hổng —
+  đối chiếu thì phát hiện **đã tái lặp đúng lỗi #1** (danh sách `paths` tường minh không qua bộ
+  lọc dotfile ⇒ tải được `.trash` và token plugin trong `.obsidian`). Đã vá cả 3, mỗi lỗi một
+  test hồi quy (xem M36.7). Bài học: ĐỌC tài liệu deploy TRƯỚC khi thiết kế, không phải lúc sắp
+  deploy. Đánh đổi
   và người gọi đã cầm MCP key hợp lệ); `WEBOBSIDIAN_FETCH_ALLOW_LOOPBACK=1` chỉ để e2e dựng được
   2 server trên 127.0.0.1, mặc định tắt và không được bật trên production.
 - 2026-07-31 (Phase 35 — vá bảo mật sau audit toàn diện): audit chạy 3 subagent song song (MCP/agent

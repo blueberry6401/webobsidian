@@ -79,6 +79,22 @@ valid MCP key.
 127.0.0.1**. Never set it in production: it lets an MCP key holder reach every loopback-bound
 service on the host.
 
+### Three findings that got the previous attempt rolled back
+
+An earlier version of this feature (`fa75f21`, 14 tools) shipped to production and was
+**removed on 2026-07-31**. All three of its findings are guarded here, each with a regression
+test — check them before touching this code:
+
+1. **Dotfile filter not applied to explicit paths.** `download_files` accepts a `paths` list
+   that never goes through `listTree`, so `.trash/*` and `.obsidian/plugins/*` `data.json`
+   (plugin tokens) were downloadable. Now `isExcludedFromExport()` rejects them; the e2e
+   asserts both paths are refused through a real MCP call.
+2. **Zip bomb.** The old code trusted `uncompressedSize` from the zip header — attacker-
+   controlled metadata — and buffered into RAM (1.2 MB body → 1.58 GB RSS). Extraction now
+   streams and enforces the ceiling on **bytes actually read**.
+3. **Overwrite destroyed data.** `on_conflict: overwrite` now moves the existing file to
+   trash first, so it stays recoverable. The default is `rename`, which never overwrites.
+
 ## Gotcha: OAuth-discovery paths must 404 (not the SPA)
 
 The claude.ai custom-connector flow always probes `GET /.well-known/oauth-protected-resource`,

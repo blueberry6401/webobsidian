@@ -142,6 +142,41 @@ describe('createZip + extractZip', () => {
     await expect(extractZip(zipPath, '', 'overwrite')).rejects.toThrow(/vượt giới hạn/);
   });
 
+  it('overwrite đẩy bản cũ vào trash chứ không xoá thẳng', async () => {
+    // Hồi quy: bản fa75f21 bị gỡ khỏi prod một phần vì ghi đè không qua trash
+    // nên dữ liệu cũ mất không khôi phục được.
+    mkdirSync(nodePath.join(dirs.vaultDir, 'Inbox'), { recursive: true });
+    writeFileSync(nodePath.join(dirs.vaultDir, 'Inbox/a.md'), 'bản cũ quý giá');
+    const zipPath = nodePath.join(workDir, 'ow.zip');
+    makeZip(zipPath, [{ name: 'a.md', content: 'bản mới' }]);
+
+    const res = await extractZip(zipPath, 'Inbox', 'overwrite');
+    expect(res.written).toEqual(['Inbox/a.md']);
+    expect(readFileSync(nodePath.join(dirs.vaultDir, 'Inbox/a.md'), 'utf8')).toBe('bản mới');
+    // bản cũ còn khôi phục được từ trash
+    const trashed = readdirSync(nodePath.join(dirs.vaultDir, '.trash'), { recursive: true }) as string[];
+    const found = trashed.some((p) => {
+      const full = nodePath.join(dirs.vaultDir, '.trash', String(p));
+      try {
+        return readFileSync(full, 'utf8') === 'bản cũ quý giá';
+      } catch {
+        return false;
+      }
+    });
+    expect(found).toBe(true);
+  });
+
+  it('dùng byte THẬT chứ không tin uncompressedSize khai trong header', async () => {
+    // Hồi quy zip bomb: bản fa75f21 tin metadata trong header nên body 1,2 MB
+    // làm RSS phồng lên 1,58 GB. buildRawZip ghi đúng size nên ở đây ta chỉ
+    // kiểm rằng ngưỡng được thực thi trên luồng đọc thật.
+    const zipPath = nodePath.join(workDir, 'ok.zip');
+    makeZip(zipPath, [{ name: 'nho.md', content: 'x'.repeat(1000) }]);
+    const res = await extractZip(zipPath, '', 'overwrite');
+    expect(res.written).toEqual(['nho.md']);
+    expect(readFileSync(nodePath.join(dirs.vaultDir, 'nho.md'), 'utf8').length).toBe(1000);
+  });
+
   it('giải nén nhiều file một lượt và bỏ qua entry thư mục', async () => {
     const zipPath = nodePath.join(workDir, 'multi.zip');
     makeZip(zipPath, [

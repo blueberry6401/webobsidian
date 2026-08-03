@@ -1,5 +1,38 @@
 import { describe, it, expect } from 'vitest';
-import { safeEntryPath, pickTarget } from './archive.js';
+import { safeEntryPath, pickTarget, isExcludedFromExport } from './archive.js';
+
+/**
+ * Hồi quy cho lỗ hổng khiến bản `fa75f21` bị GỠ khỏi production ngày 2026-07-31:
+ * bộ lọc dotfile không áp cho đường dẫn truyền thẳng vào, nên tải được
+ * `.trash/*` và `.obsidian/plugins/*&#47;data.json` (chứa token plugin).
+ */
+describe('isExcludedFromExport', () => {
+  it('chặn .trash và .obsidian ở mọi độ sâu', () => {
+    expect(isExcludedFromExport('.trash/Note.md')).toBe(true);
+    expect(isExcludedFromExport('.obsidian/plugins/dataview/data.json')).toBe(true);
+    expect(isExcludedFromExport('Notes/.obsidian/workspace.json')).toBe(true);
+  });
+
+  it('chặn .git và node_modules', () => {
+    expect(isExcludedFromExport('.git/config')).toBe(true);
+    expect(isExcludedFromExport('node_modules/x/index.js')).toBe(true);
+  });
+
+  it('chặn mọi dotfile, kể cả file lẻ ở gốc', () => {
+    expect(isExcludedFromExport('.env')).toBe(true);
+    expect(isExcludedFromExport('Notes/.secret')).toBe(true);
+  });
+
+  it('cho qua file thường, kể cả tên có dấu và có dấu chấm giữa tên', () => {
+    expect(isExcludedFromExport('Notes/Ideas.md')).toBe(false);
+    expect(isExcludedFromExport('Thư mục/Ghi chú.md')).toBe(false);
+    expect(isExcludedFromExport('a.b.c.md')).toBe(false);
+  });
+
+  it('chặn đường dẫn rỗng', () => {
+    expect(isExcludedFromExport('')).toBe(true);
+  });
+});
 
 describe('safeEntryPath', () => {
   it('giữ nguyên đường dẫn hợp lệ', () => {
