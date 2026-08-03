@@ -1,7 +1,18 @@
 # PRD — WebObsidian
 
 > Product Requirements Document
-> Phiên bản: 1.10 · Cập nhật: 2026-07-15 · Trạng thái: Draft
+> Phiên bản: 1.11 · Cập nhật: 2026-08-03 · Trạng thái: Draft
+> Changelog 1.11 (FR-16 — MCP server nhúng + truyền file hàng loạt, theo yêu cầu người dùng):
+> bổ sung **FR-16** — trước đây MCP endpoint nhúng trong web app (từ 2026-07-22) chỉ có spec
+> `docs/superpowers/specs/2026-07-22-mcp-into-webapp-design.md` mà chưa có FR trong PRD; nay được
+> mô tả chính thức. Mở rộng bộ tool 11 → **15**: `download_files`, `upload_from_url`,
+> `upload_files`, `transfer_status`. Lý do: 11 tool cũ đều thao tác **một note text mỗi lần**, nên
+> đẩy một tập file `.md` lên vault phải gọi `write_note` lặp lại hàng chục lần (chậm, và nội dung
+> do model chép lại nên có xác suất sai), còn chuyển file giữa hai vault thì không có đường nào
+> ngoài đọc/ghi từng note; cả hai đều không đụng được attachment nhị phân. Đơn vị truyền là **file
+> ZIP đi bằng HTTP ngoài luồng MCP** (endpoint `/transfer/*`, không auth, token 256-bit trong URL,
+> TTL 30 phút) — tool chỉ cấp *link*, không cầm *bytes*, nên nội dung không bao giờ đi qua context
+> của model. Chi tiết thiết kế: `docs/superpowers/specs/2026-08-03-mcp-vault-transfer-design.md`.
 > Changelog 1.10 (FR-10 — Share thư mục + Share có thời hạn, theo yêu cầu người dùng): mở rộng
 > **FR-10** — share không còn giới hạn ở 1 note/canvas mà cho phép share **cả thư mục**, trang
 > public render dạng cây file browser read-only (SSR, điều hướng bằng load trang mới qua
@@ -527,6 +538,39 @@ Không đổi API server — cả hai tính năng dùng dữ liệu client đã 
 từ Phase 29; workspace state `recent` đổi định dạng nhưng vẫn qua cùng endpoint `/api/uistate`
 không schema hoá phía server).
 
+### FR-16 · MCP server nhúng & truyền file hàng loạt
+Web app tự phục vụ giao thức Model Context Protocol tại `POST /mcp?key=<token>` (Streamable HTTP,
+stateless) — client như claude.ai Connectors nối thẳng vào vault, không cần service phụ. Key kết nối
+tách riêng khỏi API key `wok_` của FR-6: lưu băm SHA-256 trong `settings.json` (`mcp.keys`),
+soft-revoke, quản lý ở tab **Settings → MCP**.
+
+**Bộ tool (15).** 11 tool thao tác từng note: `health_check`, `list_notes`, `read_note`,
+`search_notes`, `grep_note`, `list_tags`, `get_backlinks`, `write_note`, `append_note`, `edit_note`,
+`delete_note`. 4 tool truyền file hàng loạt:
+
+- **`download_files({paths?, folder?})`** — đóng gói file trong vault thành ZIP, trả **link tải tạm
+  thời**. Bỏ trống cả hai tham số = cả vault. Bỏ qua `.trash` và dotfile (`.obsidian`, `.git`).
+  Giới hạn 5 000 file / 500 MB.
+- **`upload_from_url({url, dest_folder?, on_conflict?})`** — server tự tải ZIP từ `url` rồi giải nén
+  vào vault. Ghép với link của `download_files` ở vault khác thì **chuyển file giữa hai vault hoàn
+  toàn tự động**, bytes đi thẳng server↔server.
+- **`upload_files({dest_folder?, on_conflict?})`** — **chỉ cấp link**, chưa ghi gì; người dùng mở
+  link trong trình duyệt và kéo file ZIP vào. Dùng khi file nằm trên máy người dùng — client web
+  như claude.ai không đọc được ổ đĩa cục bộ nên đây là đường duy nhất.
+- **`transfer_status({ticket})`** — kết quả của một ticket đẩy: đã ghi / bỏ qua / lỗi.
+
+**Vì sao dùng link chứ không nhét nội dung vào tool.** Mọi thứ nằm trong tham số hoặc kết quả tool
+đều là token của model; một ZIP 5 MB mã hoá base64 thành ~6,7 MB text. Tách bytes ra khỏi luồng MCP
+cho phép chuyển vault hàng trăm MB, kể cả ảnh đính kèm.
+
+**`on_conflict`**: `rename` (mặc định — `note.md` → `note (1).md`), `overwrite`, `skip`. Không mất
+dữ liệu là mặc định đúng cho thao tác chạy không người trực.
+
+**Bảo mật** (chi tiết ở §4 NFR): ticket sống trong RAM với TTL 30 phút, token 256-bit; ticket tải
+dùng nhiều lần trong TTL, ticket đẩy **dùng đúng một lần**; guard zip-slip từ chối entry leo ra
+ngoài vault và **bỏ qua hoàn toàn entry symlink**; ngưỡng chống zip bomb; guard SSRF cho
+`upload_from_url`.
+
 ---
 
 ## 4. Yêu cầu phi chức năng (NFR)
@@ -539,6 +583,17 @@ không schema hoá phía server).
   để giữ self-host HTTP). Token git/PAT được redact khỏi mọi thông báo lỗi trả client + log. WebSocket
   `/ws` yêu cầu phiên đăng nhập hợp lệ. Plugin `id` được validate trước khi thành path segment; đổi
   `vault.path` qua API bị giới hạn trong `allowedRoots`.
+  **Truyền file (FR-16)**: token ticket 256-bit (`randomBytes(32)`), TTL 30 phút, không bao giờ ghi
+  log; ticket đẩy dùng đúng một lần. Giải nén có guard **zip-slip** — từ chối entry có đường dẫn
+  tuyệt đối, chứa `..`, chứa byte NUL, hoặc trỏ vào `.trash`/`.git` — và **bỏ qua hoàn toàn entry
+  symlink** (zip lưu được symlink; một symlink trỏ ra `/etc` sẽ biến lần ghi kế tiếp thành ghi đè
+  file hệ thống). Chống **zip bomb**: dừng khi vượt 10 000 entry hoặc 2 GB sau giải nén. Guard
+  **SSRF** cho `upload_from_url`: chỉ http/https, kiểm địa chỉ ngay tại thời điểm connect (chống DNS
+  rebinding), chặn loopback và link-local (gồm `169.254.169.254` — endpoint metadata của cloud), tối
+  đa 3 redirect và kiểm lại IP ở từng hop, cap 500 MB, timeout kết nối 15 s, xác thực là zip bằng
+  **magic bytes** chứ không tin `Content-Type`. Dải LAN riêng (`10/8`, `172.16/12`, `192.168/16`)
+  **không** bị chặn — hai vault self-hosted thường cùng mạng nội bộ, và người gọi đã phải cầm MCP
+  key hợp lệ nên đây không phải endpoint mở.
 - **Hiệu năng**: search < 100ms cho vault ~10k notes; lazy load file tree lớn.
 - **Tin cậy**: atomic writes cho settings & notes; backup trước ghi đè; git ops không mất dữ liệu.
 - **Khả chuyển**: chạy được trên Linux/macOS, ARM & x86.
@@ -607,6 +662,18 @@ GET    /api/v1/search?q=...&limit=
 GET    /api/v1/backlinks?path=
 GET    /api/v1/tags
 ```
+
+### MCP (key auth qua `?key=`) — `/mcp` · và truyền file (không auth) — `/transfer`
+```
+POST   /mcp?key={token}       # Model Context Protocol, Streamable HTTP stateless (15 tool — FR-16)
+GET    /transfer/d/{token}    # tải file ZIP do download_files sinh ra (token 256-bit, TTL 30 phút,
+                              # dùng được nhiều lần trong TTL; 404 nếu sai/hết hạn)
+GET    /transfer/u/{token}    # trang HTML kéo-thả để đẩy ZIP lên (SSR, noindex)
+POST   /transfer/u/{token}    # multipart 'file' → giải nén vào vault; ticket DÙNG MỘT LẦN
+                              # (404 nếu sai/hết hạn/đã dùng) → {written, skipped, errors}
+```
+> `/transfer` **phải** nằm trong danh sách loại trừ của SPA catch-all `app.get('*')`, nếu không mọi
+> đường dẫn `/transfer/*` sẽ trả về 200 HTML của SPA — cùng loại bẫy với `/.well-known/*` ở FR-16.
 
 ---
 

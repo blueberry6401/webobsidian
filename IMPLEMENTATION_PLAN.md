@@ -4,8 +4,8 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-07-31 (Phase 35 — vá bảo mật sau audit toàn diện: brute-force share, race
-updateSettings, .git bypass, canvas containment, body-limit DoS, Docker/CI hardening)
+Cập nhật lần cuối: 2026-08-03 (Phase 36 — MCP truyền file hàng loạt: 4 tool ZIP qua link tạm thời,
+chuyển vault A → B tự động, guard zip-slip/zip-bomb/SSRF) — đang làm
 
 ---
 
@@ -661,6 +661,33 @@ server run test` (11/11) + `npm --workspace web run test` (34/34) pass; `server/
 dựng image Docker thật bằng `npm ci`, chạy container thật, xác nhận: login đúng pass, ghi note qua API,
 tạo share + validate độ dài mật khẩu, và rate-limit unlock (10 lần sai → 429, kể cả lần kế tiếp đúng
 pass) đều hoạt động đúng như thiết kế.
+
+## Phase 36 — MCP: truyền file hàng loạt vào/ra vault — FR-16, PRD 1.11 (theo yêu cầu người dùng)
+11 tool MCP cũ đều thao tác **một note text mỗi lần**: đẩy một tập `.md` lên vault phải gọi
+`write_note` lặp lại hàng chục lần (chậm, model chép lại nên có xác suất sai), chuyển file giữa hai
+vault thì không có đường nào, và attachment nhị phân thì chịu. Thêm 4 tool truyền file bằng **ZIP đi
+qua HTTP ngoài luồng MCP** — tool chỉ cấp *link*, không cầm *bytes*, nên nội dung không đi qua
+context của model (một ZIP 5 MB base64 hoá thành ~6,7 MB text).
+Thiết kế: `docs/superpowers/specs/2026-08-03-mcp-vault-transfer-design.md` ·
+Kế hoạch: `docs/superpowers/plans/2026-08-03-mcp-vault-transfer.md`
+- [~] M36.1 `services/archive.ts` — `safeEntryPath` guard zip-slip (từ chối đường dẫn tuyệt đối, `..`,
+      byte NUL, `.trash`/`.git`; chuẩn hoá `\` → `/` cho zip tạo trên Windows); `pickTarget` xử lý
+      `on_conflict` rename/overwrite/skip; `createZip`/`extractZip` streaming qua `archiver`/`yauzl`
+      (RAM phẳng bất kể vault to). Entry symlink bị bỏ qua hoàn toàn. Ngưỡng zip bomb 10 000 entry / 2 GB.
+- [~] M36.2 `services/transfer.ts` — kho ticket **trong RAM** (không ghi `settings.json`: ticket
+      ephemeral), token 256-bit, TTL 30 phút, sweeper 5 phút/lần, ticket tải dùng nhiều lần trong TTL
+      còn ticket đẩy dùng đúng một lần; dọn `<dataDir>/transfer` lúc boot.
+- [~] M36.3 `services/fetchzip.ts` — guard SSRF: chặn loopback + link-local (gồm `169.254.169.254`
+      metadata cloud), kiểm IP **tại thời điểm connect** qua `dns.lookup` tùy biến (chống DNS
+      rebinding), ≤3 redirect kiểm lại IP từng hop, cap 500 MB, timeout 15 s, xác thực zip bằng magic
+      bytes `PK\x03\x04`. Cố ý KHÔNG chặn LAN riêng — hai vault self-hosted thường cùng mạng nội bộ.
+- [~] M36.4 `routes/transfer.ts` — `/transfer/d/:token` (tải), `/transfer/u/:token` (trang kéo-thả SSR
+      + POST multipart, multer diskStorage để không nạp cả file vào RAM). Không auth, token trong URL.
+      **`/transfer` phải được loại khỏi SPA catch-all** `app.get('*')`, nếu không SPA nuốt hết.
+- [~] M36.5 4 tool MCP: `download_files`, `upload_from_url`, `upload_files`, `transfer_status`
+      (11 → 15 tool). `createMcpServer` đổi chữ ký để nhận `baseUrl` dựng từ request.
+- [~] M36.6 E2E: `verify-mcp.ts` dựng **2 server + 2 vault**, chạy round-trip `download_files` ở A →
+      `upload_from_url` ở B, so khớp **byte từng file** gồm một file nhị phân và một tên có dấu tiếng Việt.
 
 ### Nhật ký tiến độ
 - 2026-07-31 (Phase 35 — vá bảo mật sau audit toàn diện): audit chạy 3 subagent song song (MCP/agent
