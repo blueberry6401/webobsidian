@@ -700,7 +700,11 @@ Kế hoạch: `docs/superpowers/plans/2026-08-03-mcp-vault-transfer.md`
 Verify chung cho cả phase: `npm run typecheck` sạch; `npm --workspace server run test` **70/70**
 (archive 21 + round-trip 11 + transfer 11 + fetchzip 16 + shares 11); `npm --workspace web run test`
 34/34; `npm run build` sạch; `scripts/verify-mcp.ts` **41/41** với 2 server + 2 vault thật;
-`verify-mcp-keys.ts` 14/14.
+`verify-mcp-keys.ts` 14/14. **Đã deploy lên production 2026-08-03** (commit `37d12cd`) và verify trên
+prod thật **14/14**: 15 tool, `download_files` trả link `https://` (xác nhận `TRUST_PROXY` hoạt động sau
+Caddy — `baseUrl` dựng từ `req.protocol` là rủi ro chỉ có trên prod), tải link ra zip thật, hồi quy bảo
+mật (từ chối `.obsidian`/`.trash`, chặn metadata IP + loopback), và `/transfer/d/<bịa>` → 404 JSON
+trong khi đường dẫn lạ → 200 HTML (SPA catch-all vẫn chạy, `/transfer` loại trừ đúng).
 
 ### Nhật ký tiến độ
 - 2026-08-03 (Phase 36 — MCP truyền file hàng loạt): hai lỗi chỉ lộ ra nhờ test chạy thật, không
