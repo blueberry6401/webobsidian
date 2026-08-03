@@ -48,7 +48,13 @@ docker compose up      # chạy full stack
   tử** — đừng deploy lại nó. Chi tiết: `docs/MCP.md`.
 - Key kết nối MCP tách riêng khỏi API key `wok_`: lưu `data/settings.json` (`mcp.keys`, băm SHA-256,
   soft-revoke — `services/mcpkeys.ts`), quản lý ở tab **Settings → MCP**.
-- Verify: `cd server && ../node_modules/.bin/tsx scripts/verify-mcp.ts` (server thật + MCP client thật).
+- **15 tool**: 11 tool thao tác từng note + 4 tool truyền file hàng loạt (`download_files`,
+  `upload_from_url`, `upload_files`, `transfer_status` — Phase 36). Đơn vị truyền là ZIP đi qua
+  `/transfer/*` (không auth, token trong URL, TTL 30 phút), **không** qua context của model.
+  ⚠️ `/transfer` phải nằm trong danh sách loại trừ của SPA catch-all trong `index.ts`.
+- Verify: `npm run build && cd server && ../node_modules/.bin/tsx scripts/verify-mcp.ts`
+  (2 server thật + 2 vault + MCP client thật, round-trip A→B so khớp byte). Phải build trước,
+  không thì các assertion về SPA catch-all xanh một cách vô nghĩa.
 
 ## Remote git
 - **⚠️ BẮT BUỘC — LÀM ĐẦU TIÊN MỖI PHIÊN: base code trên `origin/main`, KHÔNG tin nhánh worktree

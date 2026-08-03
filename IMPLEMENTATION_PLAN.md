@@ -5,7 +5,7 @@
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
 Cập nhật lần cuối: 2026-08-03 (Phase 36 — MCP truyền file hàng loạt: 4 tool ZIP qua link tạm thời,
-chuyển vault A → B tự động, guard zip-slip/zip-bomb/SSRF) — đang làm
+chuyển vault A → B tự động, guard zip-slip/zip-bomb/SSRF)
 
 ---
 
@@ -670,26 +670,45 @@ qua HTTP ngoài luồng MCP** — tool chỉ cấp *link*, không cầm *bytes*,
 context của model (một ZIP 5 MB base64 hoá thành ~6,7 MB text).
 Thiết kế: `docs/superpowers/specs/2026-08-03-mcp-vault-transfer-design.md` ·
 Kế hoạch: `docs/superpowers/plans/2026-08-03-mcp-vault-transfer.md`
-- [~] M36.1 `services/archive.ts` — `safeEntryPath` guard zip-slip (từ chối đường dẫn tuyệt đối, `..`,
+- [x] M36.1 `services/archive.ts` — `safeEntryPath` guard zip-slip (từ chối đường dẫn tuyệt đối, `..`,
       byte NUL, `.trash`/`.git`; chuẩn hoá `\` → `/` cho zip tạo trên Windows); `pickTarget` xử lý
       `on_conflict` rename/overwrite/skip; `createZip`/`extractZip` streaming qua `archiver`/`yauzl`
       (RAM phẳng bất kể vault to). Entry symlink bị bỏ qua hoàn toàn. Ngưỡng zip bomb 10 000 entry / 2 GB.
-- [~] M36.2 `services/transfer.ts` — kho ticket **trong RAM** (không ghi `settings.json`: ticket
+- [x] M36.2 `services/transfer.ts` — kho ticket **trong RAM** (không ghi `settings.json`: ticket
       ephemeral), token 256-bit, TTL 30 phút, sweeper 5 phút/lần, ticket tải dùng nhiều lần trong TTL
       còn ticket đẩy dùng đúng một lần; dọn `<dataDir>/transfer` lúc boot.
-- [~] M36.3 `services/fetchzip.ts` — guard SSRF: chặn loopback + link-local (gồm `169.254.169.254`
+- [x] M36.3 `services/fetchzip.ts` — guard SSRF: chặn loopback + link-local (gồm `169.254.169.254`
       metadata cloud), kiểm IP **tại thời điểm connect** qua `dns.lookup` tùy biến (chống DNS
       rebinding), ≤3 redirect kiểm lại IP từng hop, cap 500 MB, timeout 15 s, xác thực zip bằng magic
       bytes `PK\x03\x04`. Cố ý KHÔNG chặn LAN riêng — hai vault self-hosted thường cùng mạng nội bộ.
-- [~] M36.4 `routes/transfer.ts` — `/transfer/d/:token` (tải), `/transfer/u/:token` (trang kéo-thả SSR
+- [x] M36.4 `routes/transfer.ts` — `/transfer/d/:token` (tải), `/transfer/u/:token` (trang kéo-thả SSR
       + POST multipart, multer diskStorage để không nạp cả file vào RAM). Không auth, token trong URL.
       **`/transfer` phải được loại khỏi SPA catch-all** `app.get('*')`, nếu không SPA nuốt hết.
-- [~] M36.5 4 tool MCP: `download_files`, `upload_from_url`, `upload_files`, `transfer_status`
+- [x] M36.5 4 tool MCP: `download_files`, `upload_from_url`, `upload_files`, `transfer_status`
       (11 → 15 tool). `createMcpServer` đổi chữ ký để nhận `baseUrl` dựng từ request.
-- [~] M36.6 E2E: `verify-mcp.ts` dựng **2 server + 2 vault**, chạy round-trip `download_files` ở A →
+- [x] M36.6 E2E: `verify-mcp.ts` dựng **2 server + 2 vault**, chạy round-trip `download_files` ở A →
       `upload_from_url` ở B, so khớp **byte từng file** gồm một file nhị phân và một tên có dấu tiếng Việt.
 
+Verify chung cho cả phase: `npm run typecheck` sạch; `npm --workspace server run test` 63/63
+(archive 16 + round-trip 9 + transfer 11 + fetchzip 16 + shares 11); `npm run build` sạch;
+`scripts/verify-mcp.ts` **38/38** với 2 server + 2 vault thật.
+
 ### Nhật ký tiến độ
+- 2026-08-03 (Phase 36 — MCP truyền file hàng loạt): hai lỗi chỉ lộ ra nhờ test chạy thật, không
+  phải nhờ đọc code. (1) **Guard SSRF hở với IP literal** — Node BỎ QUA hook `dns.lookup` khi
+  hostname đã là địa chỉ dạng số, nên `http://169.254.169.254/` (endpoint metadata cloud, vốn
+  luôn được gọi bằng IP literal) đi thẳng qua guard; phải kiểm `net.isIP(hostname)` riêng trước
+  khi connect. (2) **Test zip-slip xanh giả** — `archiver` tự chuẩn hoá tên entry (`../../x` thành
+  `x`) nên zip "độc hại" tạo bằng nó vô hại, guard chưa hề chạy; phải thêm `services/rawzip.ts`
+  dựng ZIP ở mức byte mới kiểm chứng được (và cũng nhờ đó mới test được entry symlink). Phát hiện
+  thêm: `yauzl` có `validateFileName` riêng chặn `..`/đường dẫn tuyệt đối/`\` ở tầng thấp hơn và
+  huỷ CẢ archive — fail-closed, đúng cho một zip thù địch; `safeEntryPath` vẫn cần vì yauzl không
+  chặn `.git`/`.trash`. Tương tự, e2e chạy trước `npm run build` thì `server/public` không tồn
+  tại nên SPA catch-all không được mount, khiến các check "/transfer không bị SPA nuốt" xanh vô
+  nghĩa — đã thêm assertion chứng minh catch-all đang bật trước khi tin các check đó. Đánh đổi
+  có ý thức: guard SSRF không chặn dải LAN riêng (hai vault self-hosted thường cùng mạng nội bộ,
+  và người gọi đã cầm MCP key hợp lệ); `WEBOBSIDIAN_FETCH_ALLOW_LOOPBACK=1` chỉ để e2e dựng được
+  2 server trên 127.0.0.1, mặc định tắt và không được bật trên production.
 - 2026-07-31 (Phase 35 — vá bảo mật sau audit toàn diện): audit chạy 3 subagent song song (MCP/agent
   API, bề mặt share công khai, deployment) + kiểm chứng thủ công (dựng server thật, brute-force thử
   nghiệm login/share-unlock, mô phỏng race `updateSettings`, test filesystem case-insensitive) — 19 mục
