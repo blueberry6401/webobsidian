@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 import { Compartment, EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap, highlightActiveLine, drawSelection } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
@@ -48,6 +48,7 @@ import {
 import { renderMarkdown } from '../lib/markdown';
 import { setActiveEditor } from '../lib/activeEditor';
 import { api } from '../lib/api';
+import { LINE_WIDTH_CSS, lineWidthOf } from '../lib/lineWidth';
 
 const titleOf = (path: string | null) =>
   path ? (path.split('/').pop() ?? path).replace(/\.(md|markdown)$/i, '') : '';
@@ -86,6 +87,7 @@ export default function Editor() {
   const openContextMenu = useStore((s) => s.openContextMenu);
   const setLeftPanel = useStore((s) => s.setLeftPanel);
   const tree = useStore((s) => s.tree);
+  const lineWidths = useStore((s) => s.lineWidths);
 
   useEffect(() => {
     setLivePreviewLinkHandler(openWikilink);
@@ -428,5 +430,14 @@ export default function Editor() {
     viewMode !== 'source' ? 'is-live-preview live-preview' : '',
     viewMode === 'reading' ? 'is-reading-mode' : '',
   ].join(' ');
-  return <div className={cls} ref={host} onContextMenu={onContextMenu} />;
+  // Per-note width override (header toggle) — feeds the max-width of .cm-content.
+  const width = LINE_WIDTH_CSS[lineWidthOf(lineWidths, activePath)];
+  return (
+    <div
+      className={cls}
+      ref={host}
+      onContextMenu={onContextMenu}
+      style={{ '--file-line-width': width } as CSSProperties}
+    />
+  );
 }

@@ -16,6 +16,7 @@ import { triggerAddProperty } from '../lib/livePreview';
 import { pathToUrl } from '../lib/urlsync';
 import { VIDEO_EXT_RE, AUDIO_EXT_RE } from '../lib/media';
 import { getFoldControls } from '../lib/headingFoldControls';
+import { LINE_WIDTH_LABEL, lineWidthOf, nextLineWidth } from '../lib/lineWidth';
 
 function EditorPane() {
   const activePath = useStore((s) => s.activePath);
@@ -68,6 +69,9 @@ export default function Workspace() {
   const bookmarks = useStore((s) => s.bookmarks);
   const toggleBookmark = useStore((s) => s.toggleBookmark);
   const openToSide = useStore((s) => s.openToSide);
+  const lineWidths = useStore((s) => s.lineWidths);
+  const cycleLineWidth = useStore((s) => s.cycleLineWidth);
+  const lineWidth = lineWidthOf(lineWidths, activePath);
   const splitPath = useStore((s) => s.splitPath);
   const splitContent = useStore((s) => s.splitContent);
   const closeSplit = useStore((s) => s.closeSplit);
@@ -389,6 +393,15 @@ export default function Workspace() {
               {!isMobile && (
                 <button className="tool-btn" title="Open to the right" onClick={() => openToSide(activePath)}>
                   <Icon name="columns" size={16} />
+                </button>
+              )}
+              {!isMobile && (
+                <button
+                  className={`tool-btn ${lineWidth !== 'narrow' ? 'active' : ''}`}
+                  title={`Line width: ${LINE_WIDTH_LABEL[lineWidth]} — click for ${LINE_WIDTH_LABEL[nextLineWidth(lineWidth)]}`}
+                  onClick={() => cycleLineWidth(activePath)}
+                >
+                  <Icon name="arrow-left-right" size={16} />
                 </button>
               )}
               <div className="seg">

@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { api, type TreeNode, type ShareRecord } from './api';
 import { findNode } from './tree';
+import {
+  lineWidthOf, nextLineWidth, sanitizeLineWidths, setLineWidthEntry, type LineWidth,
+} from './lineWidth';
 
 /** Per-tab id so we can ignore the echo of our own server-pushed state change. */
 export const CLIENT_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -122,6 +125,9 @@ interface AppState {
   setTreeSort: (s: TreeSort) => void;
   autoReveal: boolean;
   toggleAutoReveal: () => void;
+  /** Per-note content width (persisted); notes not listed use the narrow default. */
+  lineWidths: Record<string, LineWidth>;
+  cycleLineWidth: (path: string) => void;
 
   // split pane (open to the side)
   splitPath: string | null;
@@ -244,7 +250,7 @@ const RECENT_CAP = 200;
 const PERSIST_KEYS = [
   'tabs', 'activePath', 'viewMode', 'expanded', 'splitPath', 'splitDirection',
   'recent', 'bookmarks', 'leftPanel', 'rightPanel', 'leftOpen', 'rightOpen', 'graphSettings',
-  'treeSort', 'autoReveal',
+  'treeSort', 'autoReveal', 'lineWidths',
 ] as const;
 
 function pickPersisted(s: any): Record<string, unknown> {
@@ -289,6 +295,7 @@ function applyPersisted(s: any, set: (p: any) => void): void {
     expanded: Array.isArray(s.expanded) ? s.expanded : [],
     treeSort: TREE_SORTS.includes(s.treeSort) ? s.treeSort : 'name-asc',
     autoReveal: s.autoReveal === true,
+    lineWidths: sanitizeLineWidths(s.lineWidths),
     splitPath: typeof s.splitPath === 'string' ? s.splitPath : null,
     splitDirection: s.splitDirection === 'down' ? 'down' : 'right',
     recent: migrateRecent(s.recent),
@@ -389,6 +396,11 @@ export const useStore = create<AppState>()(
       setTreeSort: (treeSort) => set({ treeSort }),
       autoReveal: false,
       toggleAutoReveal: () => set((s) => ({ autoReveal: !s.autoReveal })),
+      lineWidths: {},
+      cycleLineWidth: (path) =>
+        set((s) => ({
+          lineWidths: setLineWidthEntry(s.lineWidths, path, nextLineWidth(lineWidthOf(s.lineWidths, path))),
+        })),
 
       splitPath: null,
       splitContent: '',

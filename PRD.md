@@ -247,6 +247,10 @@ webobsidian/
   gồm đuôi) bấm-để-sửa được; Enter hoặc blur → gọi `PATCH /api/files/rename`, tab hiện tại chuyển sang
   trỏ đường dẫn mới (không đóng tab); Esc huỷ, trả lại tên cũ. Tên trống hoặc giữ nguyên → bỏ qua; ký tự
   `/` bị loại khỏi tên mới (không dùng để move file).
+- **Độ rộng cột nội dung theo từng note (line width)**: nút ⟷ trên header note (desktop) đảo qua 3 mức
+  `Narrow` (700px, mặc định — "readable line length" của Obsidian) → `Wide` (1100px) → `Full width`
+  (hết chiều rộng pane), áp cho Live Preview / Source / Reading. Mức chọn **lưu theo từng note** trong
+  uistate (`lineWidths`, chỉ ghi note khác mặc định, cap 300 entry) nên note nhiều bảng luôn mở rộng sẵn.
 - Backlinks panel, outline, tag pane.
 - Right sidebar dạng **tab strip icon** (giống Obsidian): Backlinks · Outgoing links · Tags · Outline.
   - Backlinks: "Linked mentions" (đếm + danh sách) **và** "Unlinked mentions" (note nhắc tên note hiện tại

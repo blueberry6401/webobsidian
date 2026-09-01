@@ -4,7 +4,9 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-08-03 (Phase 36 — MCP truyền file hàng loạt: 4 tool ZIP qua link tạm thời,
+Cập nhật lần cuối: 2026-09-01 (Phase 37 — nút chỉnh độ rộng cột nội dung theo từng note)
+
+Trước đó: 2026-08-03 (Phase 36 — MCP truyền file hàng loạt: 4 tool ZIP qua link tạm thời,
 chuyển vault A → B tự động, guard zip-slip/zip-bomb/SSRF)
 
 ---
@@ -706,7 +708,28 @@ Caddy — `baseUrl` dựng từ `req.protocol` là rủi ro chỉ có trên prod
 mật (từ chối `.obsidian`/`.trash`, chặn metadata IP + loopback), và `/transfer/d/<bịa>` → 404 JSON
 trong khi đường dẫn lạ → 200 HTML (SPA catch-all vẫn chạy, `/transfer` loại trừ đúng).
 
+## Phase 37 — Độ rộng cột nội dung theo từng note — FR-2 (theo yêu cầu người dùng)
+- [x] M37.1 `web/src/lib/lineWidth.ts`: 3 mức `narrow` (700px) / `wide` (1100px) / `full` (100%),
+      cycle, đọc mức của note, ghi/xoá entry (chỉ lưu note khác mặc định, cap 300), sanitize state
+      persisted — kèm unit test (7 case)
+- [x] M37.2 Store: `lineWidths` + `cycleLineWidth(path)`, thêm vào `PERSIST_KEYS` nên đồng bộ qua
+      `/api/uistate` giữa các trình duyệt/thiết bị
+- [x] M37.3 `Editor.tsx` đặt `--file-line-width` inline theo note đang mở (áp cho Live/Source/Reading
+      vì cả ba dùng chung một CodeMirror host)
+- [x] M37.4 Nút ⟷ trên header note (desktop, chỉ file markdown) cycle 3 mức, tooltip nói rõ mức hiện
+      tại và mức kế tiếp, sáng màu accent khi khác mặc định
+
+Verify: `npm run typecheck` sạch, `npm --workspace web run test` 41/41 (7 test mới), `npm run build` sạch.
+
 ### Nhật ký tiến độ
+- 2026-09-01 (Phase 37 — độ rộng cột nội dung): người dùng báo "màn to nhưng content vẫn co bé tí ở
+  giữa". Nguyên nhân: `Editor.tsx` gắn CỨNG class `is-readable-line-width` nên `.cm-content` luôn bị
+  cap ở `--file-line-width: 700px`, không có cách nào tắt (Obsidian có toggle "Readable line length",
+  bản này thì chưa). Người dùng chọn giải pháp: nút chỉnh nhanh ngay trên header thay vì setting chôn
+  trong Settings — đa số note toàn chữ vẫn muốn hẹp cho dễ đọc, chỉ note nhiều bảng mới cần rộng. Vì
+  đó là thuộc tính của từng note nên mức rộng lưu THEO NOTE (`lineWidths` trong uistate) chứ không
+  phải một toggle global phải bấm lại mỗi lần chuyển note. Chỉ ghi note khác mặc định + cap 300 entry
+  để uistate.json không phình theo số note đã mở.
 - 2026-08-03 (Phase 36 — MCP truyền file hàng loạt): hai lỗi chỉ lộ ra nhờ test chạy thật, không
   phải nhờ đọc code. (1) **Guard SSRF hở với IP literal** — Node BỎ QUA hook `dns.lookup` khi
   hostname đã là địa chỉ dạng số, nên `http://169.254.169.254/` (endpoint metadata cloud, vốn
