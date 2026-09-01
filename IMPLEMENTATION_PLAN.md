@@ -720,6 +720,9 @@ trong khi đường dẫn lạ → 200 HTML (SPA catch-all vẫn chạy, `/trans
       tại và mức kế tiếp, sáng màu accent khi khác mặc định
 
 Verify: `npm run typecheck` sạch, `npm --workspace web run test` 41/41 (7 test mới), `npm run build` sạch.
+**Đã deploy lên production 2026-09-01** (commit `3df5cf3`): container `Up (healthy)`, `/healthz`
+`{"ok":true}`, HTTPS 200, bundle prod `/assets/index-Dzb6U2hd.js` khớp **md5** với bản build local và
+chứa chuỗi `Line width`/`Full width`.
 
 ### Nhật ký tiến độ
 - 2026-09-01 (Phase 37 — độ rộng cột nội dung): người dùng báo "màn to nhưng content vẫn co bé tí ở
