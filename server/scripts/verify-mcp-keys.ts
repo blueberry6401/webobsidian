@@ -25,15 +25,20 @@ async function main() {
     check('createKey trả raw dạng mcp_', raw.startsWith('mcp_'), raw.slice(0, 4));
     check('record không lộ hash', !('hash' in record));
     check('prefix khớp', raw.startsWith(record.prefix));
+    check('createKey mặc định permission=write (giữ hành vi cũ)', record.permission === 'write', record.permission);
+
+    const { record: readRecord } = await mcpkeys.createKey('Claude – Read Only', 'read');
+    check('createKey permission="read" lưu đúng', readRecord.permission === 'read', readRecord.permission);
 
     const list1 = await mcpkeys.listKeys();
-    check('listKeys có 1 key', list1.length === 1, list1);
+    check('listKeys có 2 key', list1.length === 2, list1);
     check('listKeys không lộ hash', list1.every((k) => !('hash' in k)));
 
     const authed = await mcpkeys.authenticateKey(raw);
     check('authenticateKey đúng raw → record', authed?.id === record.id, authed);
     check('authenticateKey sai raw → null', (await mcpkeys.authenticateKey('mcp_wrong')) === null);
     check('authenticateKey rỗng → null', (await mcpkeys.authenticateKey('')) === null);
+    check('authenticateKey giữ nguyên permission', authed?.permission === 'write', authed?.permission);
 
     const revoked = await mcpkeys.revokeKey(record.id);
     check('revokeKey lần đầu → true', revoked === true);
@@ -41,7 +46,9 @@ async function main() {
     check('authenticateKey sau thu hồi → null', (await mcpkeys.authenticateKey(raw)) === null);
 
     const list2 = await mcpkeys.listKeys();
-    check('key thu hồi vẫn hiện trong list (soft-revoke)', list2.length === 1 && list2[0].revoked === true, list2);
+    const revokedEntry = list2.find((k) => k.id === record.id);
+    check('key thu hồi vẫn hiện trong list (soft-revoke)', list2.length === 2 && revokedEntry?.revoked === true, list2);
+    check('key còn lại (read) không bị ảnh hưởng', list2.find((k) => k.id === readRecord.id)?.revoked === false, list2);
     check('revokeKey id lạ → false', (await mcpkeys.revokeKey('nope')) === false);
   } finally {
     rmSync(dataDir, { recursive: true, force: true });

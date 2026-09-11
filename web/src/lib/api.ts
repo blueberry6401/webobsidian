@@ -238,8 +238,8 @@ export const api = {
 
   // mcp connection keys
   listMcpKeys: () => req<{ keys: any[] }>('/api/mcp-keys/'),
-  createMcpKey: (name: string) =>
-    req<{ key: string; record: any }>('/api/mcp-keys/', { method: 'POST', body: JSON.stringify({ name }) }),
+  createMcpKey: (name: string, permission: 'read' | 'write') =>
+    req<{ key: string; record: any }>('/api/mcp-keys/', { method: 'POST', body: JSON.stringify({ name, permission }) }),
   revokeMcpKey: (id: string) => req<{ ok: boolean }>(`/api/mcp-keys/${id}`, { method: 'DELETE' }),
 
   // public shares (FR-10)

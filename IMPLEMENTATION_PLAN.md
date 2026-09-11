@@ -4,10 +4,9 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-09-01 (Phase 37 — nút chỉnh độ rộng cột nội dung theo từng note)
+Cập nhật lần cuối: 2026-09-11 (Phase 38 — MCP key thêm quyền read/write)
 
-Trước đó: 2026-08-03 (Phase 36 — MCP truyền file hàng loạt: 4 tool ZIP qua link tạm thời,
-chuyển vault A → B tự động, guard zip-slip/zip-bomb/SSRF)
+Trước đó: 2026-09-01 (Phase 37 — nút chỉnh độ rộng cột nội dung theo từng note)
 
 ---
 
@@ -724,7 +723,34 @@ Verify: `npm run typecheck` sạch, `npm --workspace web run test` 41/41 (7 test
 `{"ok":true}`, HTTPS 200, bundle prod `/assets/index-Dzb6U2hd.js` khớp **md5** với bản build local và
 chứa chuỗi `Line width`/`Full width`.
 
+## Phase 38 — MCP key thêm quyền read/write — FR-16 (theo yêu cầu người dùng)
+- [x] M38.1 `McpKeySchema` (settings.ts) thêm `permission: 'read' | 'write'`, mặc định `'write'`
+      để key cũ (chưa có field) tự backfill full quyền, không đổi hành vi đang chạy
+- [x] M38.2 `mcpkeys.createKey(name, permission)` + `routes/mcpkeys.ts` `POST /` nhận `permission`
+      từ body (validate, mặc định `'write'`)
+- [x] M38.3 `mcptools.createMcpServer(baseUrl, permission)`: 6 tool có `annotations: DESTRUCTIVE`
+      (`write_note`, `append_note`, `edit_note`, `delete_note`, `upload_from_url`, `upload_files`)
+      chỉ `registerTool` khi `permission === 'write'` — key `read` không thấy tool trong
+      `tools/list`, gọi thẳng tên cũng lỗi "tool not found", không cần check thủ công trong handler.
+      `routes/mcp.ts` truyền `req.mcpKey.permission` (set bởi `mcpAuthGate`) vào đây
+- [x] M38.4 UI Settings → MCP: chọn quyền (mặc định "Đọc & ghi") lúc tạo key, badge quyền trên
+      từng key hiện có
+- [x] M38.5 Verify: mở rộng `verify-mcp-keys.ts` (tạo key `read`, permission lưu/list đúng) +
+      `verify-mcp.ts` (client thật dùng key `read`: `tools/list` chỉ 9 tool, gọi thẳng `write_note`
+      vẫn bị từ chối, `read_note` vẫn hoạt động)
+
+Verify: `npm run typecheck` sạch, `npm run build` sạch, `verify-mcp-keys.ts` **18/18**,
+`verify-mcp.ts` **45/45** (2 server + 2 vault thật, MCP client thật qua transport thật).
+
 ### Nhật ký tiến độ
+- 2026-09-11 (Phase 38 — MCP key thêm quyền read/write): giải quyết mục còn treo từ Phase 35
+  (2026-07-31, xem entry bên dưới) — lúc đó phát hiện MỌI key MCP có toàn quyền xoá vault nhưng
+  chưa làm vì cần UI chọn quyền lúc tạo key. Tận dụng đúng cơ chế `annotations: { readOnlyHint }`/
+  `{ destructiveHint }` đã gắn sẵn trên từng tool từ Phase 36: key `read` chỉ đơn giản không được
+  `registerTool` cho 6 tool DESTRUCTIVE, nên không cần thêm bất kỳ check quyền nào trong logic xử lý
+  tool — MCP SDK tự trả "tool not found" nếu bị gọi thẳng tên. Mặc định `permission: 'write'` khi
+  tạo key (theo lựa chọn người dùng, giữ đúng hành vi hiện tại làm mặc định thay vì đổi sang an toàn
+  hơn) và backfill `'write'` cho key cũ — không có key nào tự dưng mất quyền ghi sau khi deploy.
 - 2026-09-01 (Phase 37 — độ rộng cột nội dung): người dùng báo "màn to nhưng content vẫn co bé tí ở
   giữa". Nguyên nhân: `Editor.tsx` gắn CỨNG class `is-readable-line-width` nên `.cm-content` luôn bị
   cap ở `--file-line-width: 700px`, không có cách nào tắt (Obsidian có toggle "Readable line length",

@@ -262,11 +262,12 @@ function ApiKeys() {
 function McpKeys() {
   const [keys, setKeys] = useState<any[]>([]);
   const [name, setName] = useState('Claude – MacBook');
+  const [permission, setPermission] = useState<'read' | 'write'>('write');
   const [createdUrl, setCreatedUrl] = useState('');
   const load = () => api.listMcpKeys().then((r) => setKeys(r.keys)).catch(() => {});
   useEffect(() => { load(); }, []);
   const create = async () => {
-    const r = await api.createMcpKey(name);
+    const r = await api.createMcpKey(name, permission);
     setCreatedUrl(`${location.origin}/mcp?key=${r.key}`);
     await load();
   };
@@ -279,6 +280,12 @@ function McpKeys() {
       </p>
       <Row name="Tên kết nối">
         <input className="text-input" value={name} onChange={(e) => setName(e.target.value)} />
+      </Row>
+      <Row name="Quyền">
+        <select className="text-input" value={permission} onChange={(e) => setPermission(e.target.value as 'read' | 'write')}>
+          <option value="write">Đọc & ghi</option>
+          <option value="read">Chỉ đọc</option>
+        </select>
       </Row>
       <button className="btn" onClick={create}>Tạo key</button>
       {createdUrl && (
@@ -293,6 +300,9 @@ function McpKeys() {
             <div className="info">
               <div className="name">
                 {k.name} <span style={{ color: 'var(--text-faint)' }}>{k.prefix}…</span>
+                <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>
+                  {k.permission === 'read' ? 'Chỉ đọc' : 'Đọc & ghi'}
+                </span>
                 {k.revoked && <span style={{ color: '#c0392b', marginLeft: 8 }}>(đã thu hồi)</span>}
               </div>
               <div className="desc">

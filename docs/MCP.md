@@ -9,6 +9,15 @@ Manage connection keys in **Settings → MCP** (create / revoke; the full URL is
 shown once). Keys are stored hashed (SHA-256) in `data/settings.json` under `mcp.keys`,
 and are separate from the `wok_` `/api/v1` API keys.
 
+**Permission: `read` or `write`.** Chosen when creating a key (defaults to `write` — the
+original always-full-access behaviour, so keys created before this field existed keep
+working unchanged). A `read` key never sees the 6 write/delete tools in `tools/list` —
+`createMcpServer()` (`server/src/services/mcptools.ts`) simply skips `registerTool` for
+every tool tagged `annotations: { destructiveHint: true }` when `permission !== 'write'`.
+Calling one of those tool names directly still fails (MCP "tool not found"), so there is
+no per-handler check to keep in sync. `routes/mcp.ts` passes `req.mcpKey.permission`
+(set by `mcpAuthGate`) straight through.
+
 Per-note tools (11): `health_check`, `list_notes`, `read_note`, `search_notes`, `grep_note`,
 `list_tags`, `get_backlinks`, `write_note`, `append_note`, `edit_note`, `delete_note`.
 The four write/delete tools carry `destructiveHint` so Claude confirms first. The tools
@@ -21,7 +30,9 @@ This replaces the standalone Cloudflare Worker (`webobsidian-mcp`), which is ret
 ## Bulk file transfer (4 tools, 15 total)
 
 `download_files`, `upload_from_url`, `upload_files`, `transfer_status` move whole sets of
-files — **including binary attachments** — in one call. The transfer unit is a **ZIP moved
+files — **including binary attachments** — in one call. Of these, only `upload_from_url` and
+`upload_files` write to the vault and are gated by `permission: 'write'`; `download_files`
+and `transfer_status` are read-only and available to every key. The transfer unit is a **ZIP moved
 over plain HTTP, outside the MCP channel**: a tool only ever hands back a *link*, never the
 *bytes*. Anything inside a tool's arguments or result is model tokens (a 5 MB zip base64s to
 ~6.7 MB of text), so keeping bytes out of the MCP channel is what makes hundred-MB vault

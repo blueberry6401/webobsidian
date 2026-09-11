@@ -13,7 +13,8 @@ mcpKeysRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     const name = String(req.body?.name ?? 'MCP connection');
-    const { raw, record } = await createKey(name);
+    const permission = req.body?.permission === 'read' ? 'read' : 'write';
+    const { raw, record } = await createKey(name, permission);
     res.json({ key: raw, record }); // raw returned exactly once
   }),
 );

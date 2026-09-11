@@ -1,7 +1,12 @@
 # PRD — WebObsidian
 
 > Product Requirements Document
-> Phiên bản: 1.11 · Cập nhật: 2026-08-03 · Trạng thái: Draft
+> Phiên bản: 1.12 · Cập nhật: 2026-09-11 · Trạng thái: Draft
+> Changelog 1.12 (FR-16 — MCP key thêm quyền read/write, theo yêu cầu người dùng): key MCP giờ
+> chọn được `permission: 'read' | 'write'` lúc tạo (mặc định `write`, giữ hành vi gốc cho key cũ).
+> Key `read` không thấy 6 tool ghi/xoá trong `tools/list` và gọi thẳng tên cũng bị từ chối — đây
+> chính là mục còn treo từ đợt vá bảo mật Phase 35 (2026-07-31, xem Nhật ký tiến độ
+> IMPLEMENTATION_PLAN.md) lúc đó chưa làm vì cần UI chọn quyền, nay bổ sung. Xem chi tiết ở FR-16.
 > Changelog 1.11 (FR-16 — MCP server nhúng + truyền file hàng loạt, theo yêu cầu người dùng):
 > bổ sung **FR-16** — trước đây MCP endpoint nhúng trong web app (từ 2026-07-22) chỉ có spec
 > `docs/superpowers/specs/2026-07-22-mcp-into-webapp-design.md` mà chưa có FR trong PRD; nay được
@@ -547,6 +552,13 @@ Web app tự phục vụ giao thức Model Context Protocol tại `POST /mcp?key
 stateless) — client như claude.ai Connectors nối thẳng vào vault, không cần service phụ. Key kết nối
 tách riêng khỏi API key `wok_` của FR-6: lưu băm SHA-256 trong `settings.json` (`mcp.keys`),
 soft-revoke, quản lý ở tab **Settings → MCP**.
+
+**Quyền theo key (`permission: 'read' | 'write'`).** Chọn lúc tạo key ở tab Settings → MCP
+(mặc định `write` — giữ hành vi gốc trước khi field này tồn tại, nên key cũ không bị đổi quyền
+đột ngột). Key `read` không thấy 6 tool ghi/xoá (`write_note`, `append_note`, `edit_note`,
+`delete_note`, `upload_from_url`, `upload_files`) trong `tools/list`, và gọi thẳng tên tool cũng
+bị MCP SDK từ chối ("tool not found") vì tool đó chưa từng được đăng ký cho phiên đó — không có
+đường vòng qua handler.
 
 **Bộ tool (15).** 11 tool thao tác từng note: `health_check`, `list_notes`, `read_note`,
 `search_notes`, `grep_note`, `list_tags`, `get_backlinks`, `write_note`, `append_note`, `edit_note`,

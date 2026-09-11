@@ -12,6 +12,7 @@ export async function listKeys(): Promise<Omit<McpKeyRecord, 'hash'>[]> {
 
 export async function createKey(
   name: string,
+  permission: 'read' | 'write' = 'write',
 ): Promise<{ raw: string; record: Omit<McpKeyRecord, 'hash'> }> {
   const raw = `mcp_${randomBytes(24).toString('base64url')}`;
   const record: McpKeyRecord = {
@@ -22,6 +23,7 @@ export async function createKey(
     createdAt: new Date().toISOString(),
     lastUsed: null,
     revoked: false,
+    permission,
   };
   await updateSettings((d) => {
     d.mcp.keys.push(record);

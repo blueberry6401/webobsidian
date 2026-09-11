@@ -65,11 +65,19 @@ async function collectFiles(paths?: string[], folder?: string): Promise<string[]
  * `baseUrl` được dựng từ request (protocol + Host) ở `routes/mcp.ts`: tool trả
  * về link tuyệt đối để người dùng bấm được ngay trong claude.ai, và để vault
  * khác fetch được qua `upload_from_url`.
+ *
+ * `permission`: key 'read' chỉ thấy tool đọc — tool ghi/xoá (DESTRUCTIVE) không
+ * được đăng ký nên không xuất hiện trong tools/list, gọi thẳng tên cũng lỗi
+ * "tool not found". Không cần check thủ công trong từng handler.
  */
-export function createMcpServer(baseUrl: string): McpServer {
+export function createMcpServer(baseUrl: string, permission: 'read' | 'write' = 'write'): McpServer {
   const server = new McpServer({ name: 'webobsidian', version: '0.1.0' });
   const RO = { readOnlyHint: true } as const;
   const DESTRUCTIVE = { destructiveHint: true } as const;
+  // Tool ghi/xoá (annotations: DESTRUCTIVE) chỉ đăng ký khi key có quyền
+  // 'write'; đọc luôn được phép. Không đăng ký ⇒ không xuất hiện trong
+  // tools/list, gọi thẳng tên cũng lỗi "tool not found".
+  const canWrite = permission === 'write';
 
   server.registerTool(
     'health_check',
@@ -205,95 +213,103 @@ export function createMcpServer(baseUrl: string): McpServer {
     ({ path }) => run(async () => ({ path, backlinks: backlinksFor(path) })),
   );
 
-  server.registerTool(
-    'write_note',
-    {
-      description:
-        'Tạo mới hoặc GHI ĐÈ toàn bộ note. PHẢI read_note trước để lấy version rồi truyền vào base_version ' +
-        '(chống ghi đè khi note đã đổi). Tạo note MỚI: đặt base_version="". Thao tác phá hủy.',
-      inputSchema: { path: z.string(), content: z.string(), base_version: z.string() },
-      annotations: DESTRUCTIVE,
-    },
-    ({ path, content, base_version }) =>
-      run(async () => {
-        const existed = await vault.exists(path);
-        if (existed) {
-          const current = contentVersion(await vault.readFileText(path));
-          if (base_version !== current)
-            throw new Error(`version_conflict (version hiện tại ${current}) — read_note lại rồi thử lại`);
-        } else if (base_version !== '') {
-          throw new Error('version_conflict — note chưa tồn tại, tạo mới phải đặt base_version=""');
-        }
-        await vault.writeFileText(path, content);
-        reindex(path);
-        return `Đã ghi ${path} (version mới ${contentVersion(content)})`;
-      }),
-  );
-
-  server.registerTool(
-    'append_note',
-    {
-      description: 'Thêm text vào cuối note tại path. Thao tác phá hủy.',
-      inputSchema: { path: z.string(), text: z.string() },
-      annotations: DESTRUCTIVE,
-    },
-    ({ path, text }) =>
-      run(async () => {
-        const existing = (await vault.exists(path)) ? await vault.readFileText(path) : '';
-        const joined = existing && !existing.endsWith('\n') ? existing + '\n' + text : existing + text;
-        await vault.writeFileText(path, joined);
-        reindex(path);
-        return `Đã thêm vào ${path}`;
-      }),
-  );
-
-  server.registerTool(
-    'edit_note',
-    {
-      description:
-        'Sửa một đoạn trong note: thay old_string (khớp chính xác từng ký tự) bằng new_string. ' +
-        'old_string phải duy nhất trong note, nếu không hãy thêm ngữ cảnh xung quanh hoặc đặt replace_all=true để thay mọi chỗ. ' +
-        'An toàn hơn write_note vì không ghi đè phần còn lại của note.',
-      inputSchema: {
-        path: z.string(),
-        old_string: z.string().min(1),
-        new_string: z.string(),
-        replace_all: z.boolean().optional(),
+  if (canWrite) {
+    server.registerTool(
+      'write_note',
+      {
+        description:
+          'Tạo mới hoặc GHI ĐÈ toàn bộ note. PHẢI read_note trước để lấy version rồi truyền vào base_version ' +
+          '(chống ghi đè khi note đã đổi). Tạo note MỚI: đặt base_version="". Thao tác phá hủy.',
+        inputSchema: { path: z.string(), content: z.string(), base_version: z.string() },
+        annotations: DESTRUCTIVE,
       },
-      annotations: DESTRUCTIVE,
-    },
-    ({ path, old_string, new_string, replace_all }) =>
-      run(async () => {
-        if (!(await vault.exists(path))) throw new Error(`Not found: ${path}`);
-        const content = await vault.readFileText(path);
-        const result = applyEdit(content, old_string, new_string, replace_all === true);
-        if ('error' in result) {
-          if (result.error === 'find_ambiguous')
-            throw new Error(`old_string xuất hiện ${result.count} lần — thêm ngữ cảnh hoặc đặt replace_all=true`);
-          throw new Error('Không tìm thấy old_string trong note');
-        }
-        await vault.writeFileText(path, result.content);
-        reindex(path);
-        return `Đã sửa ${path} (thay ${result.replaced} chỗ)`;
-      }),
-  );
+      ({ path, content, base_version }) =>
+        run(async () => {
+          const existed = await vault.exists(path);
+          if (existed) {
+            const current = contentVersion(await vault.readFileText(path));
+            if (base_version !== current)
+              throw new Error(`version_conflict (version hiện tại ${current}) — read_note lại rồi thử lại`);
+          } else if (base_version !== '') {
+            throw new Error('version_conflict — note chưa tồn tại, tạo mới phải đặt base_version=""');
+          }
+          await vault.writeFileText(path, content);
+          reindex(path);
+          return `Đã ghi ${path} (version mới ${contentVersion(content)})`;
+        }),
+    );
+  }
 
-  server.registerTool(
-    'delete_note',
-    {
-      description: 'Xóa note (chuyển vào trash). Thao tác phá hủy.',
-      inputSchema: { path: z.string() },
-      annotations: DESTRUCTIVE,
-    },
-    ({ path }) =>
-      run(async () => {
-        if (!(await vault.exists(path))) throw new Error(`Not found: ${path}`);
-        const trashed = await vault.trash(path);
-        qmd.remove(path);
-        reindex();
-        return `Đã xóa (vào trash) ${path} → ${trashed}`;
-      }),
-  );
+  if (canWrite) {
+    server.registerTool(
+      'append_note',
+      {
+        description: 'Thêm text vào cuối note tại path. Thao tác phá hủy.',
+        inputSchema: { path: z.string(), text: z.string() },
+        annotations: DESTRUCTIVE,
+      },
+      ({ path, text }) =>
+        run(async () => {
+          const existing = (await vault.exists(path)) ? await vault.readFileText(path) : '';
+          const joined = existing && !existing.endsWith('\n') ? existing + '\n' + text : existing + text;
+          await vault.writeFileText(path, joined);
+          reindex(path);
+          return `Đã thêm vào ${path}`;
+        }),
+    );
+  }
+
+  if (canWrite) {
+    server.registerTool(
+      'edit_note',
+      {
+        description:
+          'Sửa một đoạn trong note: thay old_string (khớp chính xác từng ký tự) bằng new_string. ' +
+          'old_string phải duy nhất trong note, nếu không hãy thêm ngữ cảnh xung quanh hoặc đặt replace_all=true để thay mọi chỗ. ' +
+          'An toàn hơn write_note vì không ghi đè phần còn lại của note.',
+        inputSchema: {
+          path: z.string(),
+          old_string: z.string().min(1),
+          new_string: z.string(),
+          replace_all: z.boolean().optional(),
+        },
+        annotations: DESTRUCTIVE,
+      },
+      ({ path, old_string, new_string, replace_all }) =>
+        run(async () => {
+          if (!(await vault.exists(path))) throw new Error(`Not found: ${path}`);
+          const content = await vault.readFileText(path);
+          const result = applyEdit(content, old_string, new_string, replace_all === true);
+          if ('error' in result) {
+            if (result.error === 'find_ambiguous')
+              throw new Error(`old_string xuất hiện ${result.count} lần — thêm ngữ cảnh hoặc đặt replace_all=true`);
+            throw new Error('Không tìm thấy old_string trong note');
+          }
+          await vault.writeFileText(path, result.content);
+          reindex(path);
+          return `Đã sửa ${path} (thay ${result.replaced} chỗ)`;
+        }),
+    );
+  }
+
+  if (canWrite) {
+    server.registerTool(
+      'delete_note',
+      {
+        description: 'Xóa note (chuyển vào trash). Thao tác phá hủy.',
+        inputSchema: { path: z.string() },
+        annotations: DESTRUCTIVE,
+      },
+      ({ path }) =>
+        run(async () => {
+          if (!(await vault.exists(path))) throw new Error(`Not found: ${path}`);
+          const trashed = await vault.trash(path);
+          qmd.remove(path);
+          reindex();
+          return `Đã xóa (vào trash) ${path} → ${trashed}`;
+        }),
+    );
+  }
 
   server.registerTool(
     'download_files',
@@ -340,71 +356,75 @@ export function createMcpServer(baseUrl: string): McpServer {
       }),
   );
 
-  server.registerTool(
-    'upload_from_url',
-    {
-      description:
-        'Tải một file ZIP từ url rồi GIẢI NÉN thẳng vào vault này. Ghép với link do download_files của ' +
-        'vault khác sinh ra thì chuyển file giữa hai vault HOÀN TOÀN TỰ ĐỘNG, người dùng không phải thao tác gì ' +
-        'và nội dung không đi qua context. Chạy đồng bộ, trả ngay danh sách file đã ghi. ' +
-        'on_conflict mặc định rename (không ghi đè file sẵn có). Thao tác phá hủy.',
-      inputSchema: {
-        url: z.string().url(),
-        dest_folder: z.string().optional(),
-        on_conflict: CONFLICT.optional(),
+  if (canWrite) {
+    server.registerTool(
+      'upload_from_url',
+      {
+        description:
+          'Tải một file ZIP từ url rồi GIẢI NÉN thẳng vào vault này. Ghép với link do download_files của ' +
+          'vault khác sinh ra thì chuyển file giữa hai vault HOÀN TOÀN TỰ ĐỘNG, người dùng không phải thao tác gì ' +
+          'và nội dung không đi qua context. Chạy đồng bộ, trả ngay danh sách file đã ghi. ' +
+          'on_conflict mặc định rename (không ghi đè file sẵn có). Thao tác phá hủy.',
+        inputSchema: {
+          url: z.string().url(),
+          dest_folder: z.string().optional(),
+          on_conflict: CONFLICT.optional(),
+        },
+        annotations: DESTRUCTIVE,
       },
-      annotations: DESTRUCTIVE,
-    },
-    ({ url, dest_folder, on_conflict }) =>
-      run(async () => {
-        const dir = await transferDir();
-        const tmp = path.join(dir, `fetch-${Date.now()}-${Math.random().toString(36).slice(2)}.zip`);
-        try {
-          const { bytes } = await fetchZipToFile(url, tmp);
-          const result = await extractZip(
-            tmp,
-            (dest_folder ?? '').replace(/^\/+|\/+$/g, ''),
-            (on_conflict ?? 'rename') as OnConflict,
-          );
-          reindexAfterExtract(result.written);
-          return { downloadedBytes: bytes, ...result };
-        } finally {
-          await fsp.rm(tmp, { force: true }).catch(() => {});
-        }
-      }),
-  );
+      ({ url, dest_folder, on_conflict }) =>
+        run(async () => {
+          const dir = await transferDir();
+          const tmp = path.join(dir, `fetch-${Date.now()}-${Math.random().toString(36).slice(2)}.zip`);
+          try {
+            const { bytes } = await fetchZipToFile(url, tmp);
+            const result = await extractZip(
+              tmp,
+              (dest_folder ?? '').replace(/^\/+|\/+$/g, ''),
+              (on_conflict ?? 'rename') as OnConflict,
+            );
+            reindexAfterExtract(result.written);
+            return { downloadedBytes: bytes, ...result };
+          } finally {
+            await fsp.rm(tmp, { force: true }).catch(() => {});
+          }
+        }),
+    );
+  }
 
-  server.registerTool(
-    'upload_files',
-    {
-      description:
-        'Tạo link để NGƯỜI DÙNG tải file zip lên vault bằng trình duyệt. Tool này CHƯA ghi gì cả — nó chỉ ' +
-        'trả về một URL có hạn 30 phút và dùng đúng một lần; người dùng phải tự mở URL đó rồi kéo file zip vào. ' +
-        'Dùng khi file nằm trên máy người dùng. Nếu nguồn là một vault khác thì ĐỪNG dùng tool này — ' +
-        'dùng upload_from_url, nó tự động và không cần thao tác tay. ' +
-        'Sau khi người dùng báo đã tải xong, gọi transfer_status với ticket trả về ở đây để biết kết quả.',
-      inputSchema: {
-        dest_folder: z.string().optional(),
-        on_conflict: CONFLICT.optional(),
+  if (canWrite) {
+    server.registerTool(
+      'upload_files',
+      {
+        description:
+          'Tạo link để NGƯỜI DÙNG tải file zip lên vault bằng trình duyệt. Tool này CHƯA ghi gì cả — nó chỉ ' +
+          'trả về một URL có hạn 30 phút và dùng đúng một lần; người dùng phải tự mở URL đó rồi kéo file zip vào. ' +
+          'Dùng khi file nằm trên máy người dùng. Nếu nguồn là một vault khác thì ĐỪNG dùng tool này — ' +
+          'dùng upload_from_url, nó tự động và không cần thao tác tay. ' +
+          'Sau khi người dùng báo đã tải xong, gọi transfer_status với ticket trả về ở đây để biết kết quả.',
+        inputSchema: {
+          dest_folder: z.string().optional(),
+          on_conflict: CONFLICT.optional(),
+        },
+        annotations: DESTRUCTIVE,
       },
-      annotations: DESTRUCTIVE,
-    },
-    ({ dest_folder, on_conflict }) =>
-      run(async () => {
-        const t = createUploadTicket({
-          destFolder: (dest_folder ?? '').replace(/^\/+|\/+$/g, ''),
-          onConflict: (on_conflict ?? 'rename') as OnConflict,
-        });
-        return {
-          url: `${baseUrl}/transfer/u/${t.id}`,
-          ticket: t.id,
-          destFolder: t.destFolder || '(gốc vault)',
-          onConflict: t.onConflict,
-          expiresAt: new Date(t.expiresAt).toISOString(),
-          hint: `Người dùng mở link này và kéo file zip vào. Hết hạn sau ${TTL_MS / 60000} phút, dùng một lần.`,
-        };
-      }),
-  );
+      ({ dest_folder, on_conflict }) =>
+        run(async () => {
+          const t = createUploadTicket({
+            destFolder: (dest_folder ?? '').replace(/^\/+|\/+$/g, ''),
+            onConflict: (on_conflict ?? 'rename') as OnConflict,
+          });
+          return {
+            url: `${baseUrl}/transfer/u/${t.id}`,
+            ticket: t.id,
+            destFolder: t.destFolder || '(gốc vault)',
+            onConflict: t.onConflict,
+            expiresAt: new Date(t.expiresAt).toISOString(),
+            hint: `Người dùng mở link này và kéo file zip vào. Hết hạn sau ${TTL_MS / 60000} phút, dùng một lần.`,
+          };
+        }),
+    );
+  }
 
   server.registerTool(
     'transfer_status',

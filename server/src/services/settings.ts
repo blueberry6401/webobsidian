@@ -24,6 +24,9 @@ const McpKeySchema = z.object({
   createdAt: z.string(),
   lastUsed: z.string().nullable().default(null),
   revoked: z.boolean().default(false),
+  // 'write' = đọc & ghi (toàn quyền, hành vi gốc); mặc định 'write' để key cũ
+  // (tạo trước khi field này tồn tại) tự backfill full quyền, không đổi hành vi.
+  permission: z.enum(['read', 'write']).default('write'),
 });
 
 const HtmlTemplateSchema = z.object({

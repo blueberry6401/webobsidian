@@ -51,10 +51,10 @@ async function connect(base: string, key: string): Promise<Client> {
  * Seed key MCP trong một process PHỤ: `config.dataDir` được chốt lúc nạp module,
  * nên process này không thể tạo key cho hai DATA_DIR khác nhau.
  */
-function seedKey(dataDir: string, vaultDir: string): string {
+function seedKey(dataDir: string, vaultDir: string, permission: 'read' | 'write' = 'write'): string {
   const code = `
     const { createKey } = await import('./src/services/mcpkeys.js');
-    const { raw } = await createKey('verify-mcp');
+    const { raw } = await createKey('verify-mcp', '${permission}');
     process.stdout.write(raw);
   `;
   return execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], {
@@ -91,6 +91,7 @@ async function main() {
 
   const keyA = seedKey(dataA, vaultA);
   const keyB = seedKey(dataB, vaultB);
+  const keyAReadOnly = seedKey(dataA, vaultA, 'read');
 
   let childA: ChildProcess | null = null;
   let childB: ChildProcess | null = null;
@@ -113,6 +114,27 @@ async function main() {
 
     const h = await client.callTool({ name: 'health_check', arguments: {} });
     check('health_check ok', textOf(h).includes('webobsidian-agent-api'), textOf(h));
+
+    // --- read-only key: chỉ thấy 9 tool đọc, không thấy 6 tool ghi/xoá,
+    // và gọi thẳng tên tool ghi vẫn bị từ chối (không đăng ký ⇒ "not found") ---
+    const clientRO = await connect(BASE_A, keyAReadOnly);
+    const toolsRO = await clientRO.listTools();
+    const roNames = toolsRO.tools.map((t) => t.name).sort();
+    const writeToolNames = ['write_note', 'append_note', 'edit_note', 'delete_note', 'upload_from_url', 'upload_files'];
+    check('key read-only: tools/list chỉ có 9 tool đọc', toolsRO.tools.length === 9, roNames);
+    check('key read-only: không có tool nào trong 6 tool ghi/xoá', writeToolNames.every((n) => !roNames.includes(n)), roNames);
+
+    const roWriteAttempt = await clientRO.callTool({
+      name: 'write_note',
+      arguments: { path: 'RO/khong-duoc.md', content: 'x', base_version: '' },
+    });
+    check(
+      'key read-only: gọi thẳng write_note vẫn bị từ chối (tool not found)',
+      (roWriteAttempt as any).isError === true,
+      roWriteAttempt,
+    );
+    check('key read-only: read_note vẫn hoạt động bình thường', roNames.includes('read_note'));
+    await clientRO.close();
 
     const notePath = 'MCP/Verify Note.md';
     const w = await client.callTool({ name: 'write_note', arguments: { path: notePath, content: 'xin chào thế giới\nhàng hai', base_version: '' } });
