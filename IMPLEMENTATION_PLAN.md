@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-09-11 (Phase 38 — MCP key thêm quyền read/write)
+Cập nhật lần cuối: 2026-09-13 (Phase 38 — MCP key thêm quyền read/write, đã deploy prod)
 
 Trước đó: 2026-09-01 (Phase 37 — nút chỉnh độ rộng cột nội dung theo từng note)
 
@@ -741,6 +741,15 @@ chứa chuỗi `Line width`/`Full width`.
 
 Verify: `npm run typecheck` sạch, `npm run build` sạch, `verify-mcp-keys.ts` **18/18**,
 `verify-mcp.ts` **45/45** (2 server + 2 vault thật, MCP client thật qua transport thật).
+**Đã deploy lên production 2026-09-13** (commit `2d92109`): container `Up (healthy)`, `restarts=0`,
+`/healthz` `{"ok":true}`, HTTPS 200, `POST /mcp` không key → 401, bundle prod `/assets/index-DfvX70se.js`
+khớp **md5** bản build sạch local và chứa chuỗi `Chỉ đọc`/`Đọc & ghi`. **Verify chức năng trên prod bằng
+MCP client thật:** tạo key `read` tạm → `tools/list` trả đúng **9** tool đọc, gọi thẳng `write_note` →
+`-32602 Tool write_note not found`, `list_notes` vẫn chạy; key `write` tạm → **15** tool; key cũ tạo trước
+đó (`Claude – MacBook`) tự backfill `permission: write` — không mất quyền ghi. Hai key tạm đã thu hồi, key
+thu hồi gọi `/mcp` → 401. (Tạo/thu hồi key qua REST `/api/mcp-keys` bằng phiên đăng nhập nên KHÔNG cần
+restart container như cách `docker exec` ghi thẳng settings.json.) Instance thứ hai (Finpath) người dùng
+tự deploy.
 
 ### Nhật ký tiến độ
 - 2026-09-11 (Phase 38 — MCP key thêm quyền read/write): giải quyết mục còn treo từ Phase 35
