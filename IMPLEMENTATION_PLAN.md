@@ -748,7 +748,11 @@ chứa chuỗi `Line width`/`Full width`.
 Verify: `npm run typecheck` sạch, `npm run build` sạch, `verify-mcp-keys.ts` **23/23**,
 `verify-mcp.ts` **53/53** (2 server + 2 vault thật, MCP client thật qua transport thật, gồm đổi quyền
 qua PATCH có hiệu lực ngay), `npm --workspace web run test` 45/45 (4 test mount UI McpKeys).
-**Đã deploy lên production 2026-09-13** (commit `2d92109`): container `Up (healthy)`, `restarts=0`,
+**Đã deploy lên production 2026-09-13 lần 2** (commit `d03c98a` — đổi quyền tại chỗ + modal): container
+`healthy` `restarts=0`, bundle `/assets/index-B7i0icKC.js` khớp md5 local, chứa `Tạo MCP key`/`Đã đổi quyền`.
+Verify chức năng trên prod: key `read` tạm → `tools/list` 9; `PATCH {permission:"admin"}` → 400;
+`PATCH {permission:"write"}` → 200 và **ngay lần gọi kế tiếp thấy 15 tool, không restart**; thu hồi → 401.
+Lần 1 cùng ngày (commit `2d92109`): container `Up (healthy)`, `restarts=0`,
 `/healthz` `{"ok":true}`, HTTPS 200, `POST /mcp` không key → 401, bundle prod `/assets/index-DfvX70se.js`
 khớp **md5** bản build sạch local và chứa chuỗi `Chỉ đọc`/`Đọc & ghi`. **Verify chức năng trên prod bằng
 MCP client thật:** tạo key `read` tạm → `tools/list` trả đúng **9** tool đọc, gọi thẳng `write_note` →
