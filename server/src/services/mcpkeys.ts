@@ -44,6 +44,20 @@ export async function revokeKey(id: string): Promise<boolean> {
   return changed;
 }
 
+/** Đổi quyền của một key còn hiệu lực. Có tác dụng ngay cho request kế tiếp vì
+ *  `authenticateKey` đọc record từ settings mỗi lần — không cần restart. */
+export async function setPermission(id: string, permission: 'read' | 'write'): Promise<boolean> {
+  let changed = false;
+  await updateSettings((d) => {
+    const k = d.mcp.keys.find((x) => x.id === id);
+    if (k && !k.revoked) {
+      k.permission = permission;
+      changed = true;
+    }
+  });
+  return changed;
+}
+
 /** Look up a raw key; returns the matching active record (and bumps lastUsed). */
 export async function authenticateKey(raw: string): Promise<McpKeyRecord | null> {
   if (!raw) return null;

@@ -40,6 +40,11 @@ async function main() {
     check('authenticateKey rỗng → null', (await mcpkeys.authenticateKey('')) === null);
     check('authenticateKey giữ nguyên permission', authed?.permission === 'write', authed?.permission);
 
+    check('setPermission write→read → true', (await mcpkeys.setPermission(record.id, 'read')) === true);
+    check('authenticateKey thấy quyền mới ngay (không cần restart)', (await mcpkeys.authenticateKey(raw))?.permission === 'read');
+    check('setPermission read→write → true', (await mcpkeys.setPermission(record.id, 'write')) === true);
+    check('setPermission id lạ → false', (await mcpkeys.setPermission('nope', 'read')) === false);
+
     const revoked = await mcpkeys.revokeKey(record.id);
     check('revokeKey lần đầu → true', revoked === true);
     check('revokeKey lần hai → false (đã thu hồi)', (await mcpkeys.revokeKey(record.id)) === false);
@@ -50,6 +55,7 @@ async function main() {
     check('key thu hồi vẫn hiện trong list (soft-revoke)', list2.length === 2 && revokedEntry?.revoked === true, list2);
     check('key còn lại (read) không bị ảnh hưởng', list2.find((k) => k.id === readRecord.id)?.revoked === false, list2);
     check('revokeKey id lạ → false', (await mcpkeys.revokeKey('nope')) === false);
+    check('setPermission trên key đã thu hồi → false', (await mcpkeys.setPermission(record.id, 'read')) === false);
   } finally {
     rmSync(dataDir, { recursive: true, force: true });
     rmSync(vaultDir, { recursive: true, force: true });

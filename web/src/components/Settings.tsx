@@ -259,18 +259,56 @@ function ApiKeys() {
   );
 }
 
-function McpKeys() {
+type McpPermission = 'read' | 'write';
+const MCP_PERMISSION_LABEL: Record<McpPermission, string> = { write: 'Đọc & ghi', read: 'Chỉ đọc' };
+
+function McpPermissionSelect({ value, onChange, disabled }: { value: McpPermission; onChange: (p: McpPermission) => void; disabled?: boolean }) {
+  return (
+    <select className="text-input" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as McpPermission)}>
+      <option value="write">{MCP_PERMISSION_LABEL.write}</option>
+      <option value="read">{MCP_PERMISSION_LABEL.read}</option>
+    </select>
+  );
+}
+
+export function McpKeys() {
+  const notify = useStore((s) => s.notify);
   const [keys, setKeys] = useState<any[]>([]);
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState('Claude – MacBook');
-  const [permission, setPermission] = useState<'read' | 'write'>('write');
+  const [permission, setPermission] = useState<McpPermission>('write');
+  const [busy, setBusy] = useState(false);
   const [createdUrl, setCreatedUrl] = useState('');
   const load = () => api.listMcpKeys().then((r) => setKeys(r.keys)).catch(() => {});
   useEffect(() => { load(); }, []);
+
   const create = async () => {
-    const r = await api.createMcpKey(name, permission);
-    setCreatedUrl(`${location.origin}/mcp?key=${r.key}`);
-    await load();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await api.createMcpKey(name.trim() || 'MCP connection', permission);
+      setCreatedUrl(`${location.origin}/mcp?key=${r.key}`);
+      setCreating(false);
+      await load();
+    } catch (e: any) {
+      notify(e.message || 'Tạo key thất bại');
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const changePermission = async (id: string, p: McpPermission) => {
+    // Đổi lạc quan trên UI; nếu server từ chối thì tải lại danh sách để về đúng trạng thái.
+    setKeys((ks) => ks.map((k) => (k.id === id ? { ...k, permission: p } : k)));
+    try {
+      await api.setMcpKeyPermission(id, p);
+      notify(`Đã đổi quyền → ${MCP_PERMISSION_LABEL[p]}`);
+    } catch (e: any) {
+      notify(e.message || 'Đổi quyền thất bại');
+      load();
+    }
+  };
+
   return (
     <div>
       <h2>MCP</h2>
@@ -278,16 +316,7 @@ function McpKeys() {
         Kết nối Claude tới vault này qua giao thức MCP. Dán URL vào claude.ai → Settings → Connectors,
         hoặc chạy <code>claude mcp add</code>. URL chứa key bí mật — chỉ hiện một lần.
       </p>
-      <Row name="Tên kết nối">
-        <input className="text-input" value={name} onChange={(e) => setName(e.target.value)} />
-      </Row>
-      <Row name="Quyền">
-        <select className="text-input" value={permission} onChange={(e) => setPermission(e.target.value as 'read' | 'write')}>
-          <option value="write">Đọc & ghi</option>
-          <option value="read">Chỉ đọc</option>
-        </select>
-      </Row>
-      <button className="btn" onClick={create}>Tạo key</button>
+      <button className="btn" onClick={() => setCreating(true)}>Tạo key</button>
       {createdUrl && (
         <pre style={{ background: 'var(--bg-primary)', padding: 10, borderRadius: 6, marginTop: 10, wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
           {createdUrl}
@@ -300,23 +329,52 @@ function McpKeys() {
             <div className="info">
               <div className="name">
                 {k.name} <span style={{ color: 'var(--text-faint)' }}>{k.prefix}…</span>
-                <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>
-                  {k.permission === 'read' ? 'Chỉ đọc' : 'Đọc & ghi'}
-                </span>
-                {k.revoked && <span style={{ color: '#c0392b', marginLeft: 8 }}>(đã thu hồi)</span>}
+                {k.revoked && (
+                  <>
+                    <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>{MCP_PERMISSION_LABEL[(k.permission as McpPermission) ?? 'write']}</span>
+                    <span style={{ color: '#c0392b', marginLeft: 8 }}>(đã thu hồi)</span>
+                  </>
+                )}
               </div>
               <div className="desc">
                 tạo: {String(k.createdAt).slice(0, 10)} · dùng gần nhất: {k.lastUsed ?? 'chưa'}
               </div>
             </div>
             {!k.revoked && (
-              <button className="btn danger" onClick={async () => { await api.revokeMcpKey(k.id); load(); }}>
-                Thu hồi
-              </button>
+              <div className="control" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <McpPermissionSelect value={(k.permission as McpPermission) ?? 'write'} onChange={(p) => changePermission(k.id, p)} />
+                <button className="btn danger" onClick={async () => { await api.revokeMcpKey(k.id); load(); }}>
+                  Thu hồi
+                </button>
+              </div>
             )}
           </div>
         ))}
       </div>
+
+      {creating && (
+        <div className="modal-bg" onClick={() => !busy && setCreating(false)}>
+          <div className="modal" style={{ width: 440, padding: 20 }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 12px' }}>Tạo MCP key</h3>
+            <Row name="Tên kết nối" desc="Để nhận ra key này trong danh sách">
+              <input
+                className="text-input"
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void create(); }}
+              />
+            </Row>
+            <Row name="Quyền" desc="Chỉ đọc: không thấy tool ghi/xoá">
+              <McpPermissionSelect value={permission} onChange={setPermission} />
+            </Row>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button className="btn secondary" disabled={busy} onClick={() => setCreating(false)}>Hủy</button>
+              <button className="btn" disabled={busy} onClick={create}>{busy ? 'Đang tạo…' : 'Tạo'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

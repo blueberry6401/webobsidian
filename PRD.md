@@ -4,7 +4,8 @@
 > Phiên bản: 1.12 · Cập nhật: 2026-09-11 · Trạng thái: Draft
 > Changelog 1.12 (FR-16 — MCP key thêm quyền read/write, theo yêu cầu người dùng): key MCP giờ
 > chọn được `permission: 'read' | 'write'` lúc tạo (mặc định `write`, giữ hành vi gốc cho key cũ).
-> Key `read` không thấy 6 tool ghi/xoá trong `tools/list` và gọi thẳng tên cũng bị từ chối — đây
+> Key `read` không thấy 6 tool ghi/xoá trong `tools/list` và gọi thẳng tên cũng bị từ chối; key đã tạo
+> đổi quyền được tại chỗ (`PATCH /api/mcp-keys/{id}`), tạo key qua modal tên + quyền — đây
 > chính là mục còn treo từ đợt vá bảo mật Phase 35 (2026-07-31, xem Nhật ký tiến độ
 > IMPLEMENTATION_PLAN.md) lúc đó chưa làm vì cần UI chọn quyền, nay bổ sung. Xem chi tiết ở FR-16.
 > Changelog 1.11 (FR-16 — MCP server nhúng + truyền file hàng loạt, theo yêu cầu người dùng):
@@ -558,7 +559,9 @@ soft-revoke, quản lý ở tab **Settings → MCP**.
 đột ngột). Key `read` không thấy 6 tool ghi/xoá (`write_note`, `append_note`, `edit_note`,
 `delete_note`, `upload_from_url`, `upload_files`) trong `tools/list`, và gọi thẳng tên tool cũng
 bị MCP SDK từ chối ("tool not found") vì tool đó chưa từng được đăng ký cho phiên đó — không có
-đường vòng qua handler.
+đường vòng qua handler. Quyền của key **đã tạo** đổi được tại chỗ (dropdown cạnh nút Thu hồi →
+`PATCH /api/mcp-keys/{id} {permission}`), có hiệu lực ngay ở request kế tiếp vì mỗi request MCP đọc
+record key từ settings — không cần restart. Nút "Tạo key" mở modal nhập tên + quyền (mặc định Đọc & ghi).
 
 **Bộ tool (15).** 11 tool thao tác từng note: `health_check`, `list_notes`, `read_note`,
 `search_notes`, `grep_note`, `list_tags`, `get_backlinks`, `write_note`, `append_note`, `edit_note`,

@@ -136,6 +136,29 @@ async function main() {
     check('key read-only: read_note vẫn hoạt động bình thường', roNames.includes('read_note'));
     await clientRO.close();
 
+    // --- đổi quyền key đang dùng qua REST (PATCH /api/mcp-keys/:id) → có hiệu lực
+    // ngay ở kết nối kế tiếp, không restart server. Đăng nhập bằng pass mặc định. ---
+    const loginRes = await fetch(`${BASE_A}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: '123456' }) });
+    const cookie = (loginRes.headers.get('set-cookie') ?? '').split(';')[0];
+    check('login REST để quản lý key', loginRes.ok && cookie.length > 0, loginRes.status);
+    const keyList: any = await (await fetch(`${BASE_A}/api/mcp-keys/`, { headers: { cookie } })).json();
+    const roRecord = keyList.keys.find((k: any) => k.permission === 'read' && !k.revoked);
+    check('list key có field permission', Boolean(roRecord), keyList.keys);
+    const patchBad = await fetch(`${BASE_A}/api/mcp-keys/${roRecord.id}`, { method: 'PATCH', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ permission: 'admin' }) });
+    check('PATCH permission không hợp lệ → 400', patchBad.status === 400, patchBad.status);
+    const patchOk = await fetch(`${BASE_A}/api/mcp-keys/${roRecord.id}`, { method: 'PATCH', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ permission: 'write' }) });
+    check('PATCH read→write → 200', patchOk.status === 200, patchOk.status);
+    const clientUp = await connect(BASE_A, keyAReadOnly);
+    check('key vừa nâng quyền thấy đủ 15 tool ngay (không restart)', (await clientUp.listTools()).tools.length === 15);
+    await clientUp.close();
+    const patchBack = await fetch(`${BASE_A}/api/mcp-keys/${roRecord.id}`, { method: 'PATCH', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ permission: 'read' }) });
+    check('PATCH write→read → 200', patchBack.status === 200, patchBack.status);
+    const clientDown = await connect(BASE_A, keyAReadOnly);
+    check('key vừa hạ quyền chỉ còn 9 tool ngay', (await clientDown.listTools()).tools.length === 9);
+    await clientDown.close();
+    const patch404 = await fetch(`${BASE_A}/api/mcp-keys/khong-co`, { method: 'PATCH', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ permission: 'read' }) });
+    check('PATCH id lạ → 404', patch404.status === 404, patch404.status);
+
     const notePath = 'MCP/Verify Note.md';
     const w = await client.callTool({ name: 'write_note', arguments: { path: notePath, content: 'xin chào thế giới\nhàng hai', base_version: '' } });
     check('write_note tạo mới', textOf(w).includes('Đã ghi'), textOf(w));

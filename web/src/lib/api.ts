@@ -240,6 +240,8 @@ export const api = {
   listMcpKeys: () => req<{ keys: any[] }>('/api/mcp-keys/'),
   createMcpKey: (name: string, permission: 'read' | 'write') =>
     req<{ key: string; record: any }>('/api/mcp-keys/', { method: 'POST', body: JSON.stringify({ name, permission }) }),
+  setMcpKeyPermission: (id: string, permission: 'read' | 'write') =>
+    req<{ ok: boolean }>(`/api/mcp-keys/${id}`, { method: 'PATCH', body: JSON.stringify({ permission }) }),
   revokeMcpKey: (id: string) => req<{ ok: boolean }>(`/api/mcp-keys/${id}`, { method: 'DELETE' }),
 
   // public shares (FR-10)

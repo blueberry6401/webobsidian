@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-09-13 (Phase 38 — MCP key thêm quyền read/write, đã deploy prod)
+Cập nhật lần cuối: 2026-09-13 (Phase 38 — MCP key thêm quyền read/write + đổi quyền tại chỗ + modal tạo key)
 
 Trước đó: 2026-09-01 (Phase 37 — nút chỉnh độ rộng cột nội dung theo từng note)
 
@@ -738,9 +738,16 @@ chứa chuỗi `Line width`/`Full width`.
 - [x] M38.5 Verify: mở rộng `verify-mcp-keys.ts` (tạo key `read`, permission lưu/list đúng) +
       `verify-mcp.ts` (client thật dùng key `read`: `tools/list` chỉ 9 tool, gọi thẳng `write_note`
       vẫn bị từ chối, `read_note` vẫn hoạt động)
+- [x] M38.6 Đổi quyền key đã tạo: `mcpkeys.setPermission(id, p)` + `PATCH /api/mcp-keys/:id`
+      (400 nếu permission lạ, 404 nếu id lạ/đã thu hồi). Hiệu lực NGAY cho kết nối kế tiếp — không
+      restart (e2e: PATCH read→write → client thấy 15 tool, PATCH ngược lại → 9 tool)
+- [x] M38.7 UI: dropdown quyền đặt cạnh nút Thu hồi trên từng key còn hiệu lực (key đã thu hồi chỉ
+      hiện nhãn); nút "Tạo key" mở modal nhập tên + quyền (mặc định Đọc & ghi) + nút Tạo/Hủy, Enter
+      để tạo. Test mount thật bằng jsdom (`web/src/components/McpKeys.test.ts`, 4 case)
 
-Verify: `npm run typecheck` sạch, `npm run build` sạch, `verify-mcp-keys.ts` **18/18**,
-`verify-mcp.ts` **45/45** (2 server + 2 vault thật, MCP client thật qua transport thật).
+Verify: `npm run typecheck` sạch, `npm run build` sạch, `verify-mcp-keys.ts` **23/23**,
+`verify-mcp.ts` **53/53** (2 server + 2 vault thật, MCP client thật qua transport thật, gồm đổi quyền
+qua PATCH có hiệu lực ngay), `npm --workspace web run test` 45/45 (4 test mount UI McpKeys).
 **Đã deploy lên production 2026-09-13** (commit `2d92109`): container `Up (healthy)`, `restarts=0`,
 `/healthz` `{"ok":true}`, HTTPS 200, `POST /mcp` không key → 401, bundle prod `/assets/index-DfvX70se.js`
 khớp **md5** bản build sạch local và chứa chuỗi `Chỉ đọc`/`Đọc & ghi`. **Verify chức năng trên prod bằng
@@ -752,6 +759,13 @@ restart container như cách `docker exec` ghi thẳng settings.json.) Instance 
 tự deploy.
 
 ### Nhật ký tiến độ
+- 2026-09-13 (Phase 38 bổ sung — đổi quyền tại chỗ + modal tạo key, theo yêu cầu người dùng sau khi
+  xem UI): người dùng muốn key đã tạo cũng đổi được quyền (không phải thu hồi tạo lại) và luồng tạo key
+  gọn hơn (bấm nút → modal). Điểm kỹ thuật đáng nhớ: đổi quyền có hiệu lực NGAY mà không restart, vì
+  `authenticateKey` đọc record từ settings ở mỗi request và `createMcpServer` dựng bộ tool theo
+  `permission` của record đó cho từng request (stateless) — khác với ghi thẳng `settings.json` bằng
+  `docker exec` (cache RAM không biết) từng ghi trong tài liệu deploy. Chrome MCP không kết nối được ở
+  phiên remote nên UI được kiểm bằng mount thật trong jsdom (react-dom/client + act) thay vì screenshot.
 - 2026-09-11 (Phase 38 — MCP key thêm quyền read/write): giải quyết mục còn treo từ Phase 35
   (2026-07-31, xem entry bên dưới) — lúc đó phát hiện MỌI key MCP có toàn quyền xoá vault nhưng
   chưa làm vì cần UI chọn quyền lúc tạo key. Tận dụng đúng cơ chế `annotations: { readOnlyHint }`/

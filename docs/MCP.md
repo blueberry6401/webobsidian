@@ -16,7 +16,10 @@ working unchanged). A `read` key never sees the 6 write/delete tools in `tools/l
 every tool tagged `annotations: { destructiveHint: true }` when `permission !== 'write'`.
 Calling one of those tool names directly still fails (MCP "tool not found"), so there is
 no per-handler check to keep in sync. `routes/mcp.ts` passes `req.mcpKey.permission`
-(set by `mcpAuthGate`) straight through.
+(set by `mcpAuthGate`) straight through. An existing key's permission can be changed in place
+(dropdown next to Revoke → `PATCH /api/mcp-keys/:id {permission}`); it takes effect on the very
+next MCP request with no restart, because each request re-reads the key record and builds its
+tool set from it.
 
 Per-note tools (11): `health_check`, `list_notes`, `read_note`, `search_notes`, `grep_note`,
 `list_tags`, `get_backlinks`, `write_note`, `append_note`, `edit_note`, `delete_note`.
