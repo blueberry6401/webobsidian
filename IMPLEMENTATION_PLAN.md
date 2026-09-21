@@ -4,7 +4,7 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-09-21 (Phase 39 — Search: cụm nguyên văn bằng nháy kép)
+Cập nhật lần cuối: 2026-09-21 (Phase 39 — Search: cụm nguyên văn bằng nháy kép; đã deploy prod `6a63302`)
 
 Trước đó: 2026-09-13 (Phase 38 — MCP key thêm quyền read/write + đổi quyền tại chỗ + modal tạo key)
 
@@ -788,7 +788,14 @@ token dài không ra (`"hello"` không khớp "sayhello"; `prefix: true` chỉ c
 
 Verify: `npm run typecheck` sạch, `npm run build` sạch, `npm --workspace server run test` **88/88**
 (18 test mới), `npm --workspace web run test` 45/45, `verify-mcp.ts` **53/53** (`search_notes` dùng chung
-`qmd.search`), e2e Playwright 9/9 như M39.5. Chưa deploy — chờ người dùng xác nhận.
+`qmd.search`), e2e Playwright 9/9 như M39.5.
+**Đã deploy lên production 2026-09-21** (commit `6a63302`, fast-forward từ `d03c98a`, build trên droplet ~17 phút):
+container `Up (healthy)` `restarts=0`, `/healthz` `{"ok":true}`, HTTPS 200, `POST /mcp` không key → 401, bundle
+prod `/assets/index-Vtci5LAj.js` **khớp md5 từng byte** với bản build trong worktree và chứa placeholder
+`"exact phrase"`. **Verify chức năng trên vault thật** (REST bằng phiên đăng nhập, cụm lấy ngẫu nhiên từ
+snippet một note thật — ra `"đường Ngày"`, có dấu tiếng Việt): nháy kép → **1** note, không nháy → **69**;
+`/search/matches` xác nhận hit đó có ≥1 khớp và mọi range highlight dài đúng 10 ký tự = độ dài cụm; **68 note
+bị loại đều có 0 khớp nguyên cụm**; cụm vô nghĩa → 0. Instance Finpath người dùng tự deploy.
 
 ### Nhật ký tiến độ
 - 2026-09-21 (Phase 39 — search cụm nguyên văn bằng nháy kép, theo yêu cầu người dùng): trước đây `"a b"`
