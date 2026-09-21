@@ -160,7 +160,12 @@ export function createMcpServer(baseUrl: string, permission: 'read' | 'write' = 
   server.registerTool(
     'search_notes',
     {
-      description: "Tìm kiếm vault. Hỗ trợ fielded: tag:, path:, title:. Ví dụ 'tag:project'.",
+      description:
+        "Tìm kiếm vault. Hỗ trợ fielded: tag:, path:, title:. Ví dụ 'tag:project'. " +
+        'Bọc trong nháy kép để tìm NGUYÊN VĂN cụm liền nhau (không phân biệt hoa/thường), ' +
+        'ví dụ \'"hello world"\' — khác với hello world không nháy (tách từng từ, fuzzy). ' +
+        'Cụm nháy kép + từ rời/qualifier kết hợp AND.',
+
       inputSchema: { query: z.string(), limit: z.number().int().min(1).max(100).optional() },
       annotations: RO,
     },

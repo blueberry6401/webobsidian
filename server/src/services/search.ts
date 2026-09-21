@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import MiniSearch from 'minisearch';
+import MiniSearch, { type SearchOptions, type SearchResult } from 'minisearch';
 import { getSettings } from './settings.js';
 import { INDEX_FILE, config } from '../config.js';
 import { listMarkdownFiles, readFileText } from './vault.js';
@@ -65,6 +65,22 @@ function inferPropType(key: string, v: unknown): string {
   }
   return 'text';
 }
+
+/** A ranked note id — the common shape between MiniSearch results and phrase hits. */
+interface Ranked {
+  id: string;
+  score: number;
+  title: string;
+}
+
+function toRanked(r: SearchResult): Ranked {
+  return { id: r.id as string, score: r.score, title: (r.title as string | undefined) ?? (r.id as string) };
+}
+
+// MiniSearch's own tokenizer, so phrase words map onto the same index terms.
+// It yields empty strings around leading/trailing punctuation (`"--"` → ["",""]).
+const miniTokenize = MiniSearch.getDefault('tokenize') as (text: string) => string[];
+const tokenize = (text: string): string[] => miniTokenize(text).filter(Boolean);
 
 /** Re-base highlight ranges after `text.trim()` drops leading whitespace. */
 function shiftRanges(untrimmed: string, ranges: [number, number][]): [number, number][] {
@@ -198,36 +214,101 @@ class QmdEngine {
   async search(query: string, limit = 0): Promise<SearchHit[]> {
     if (!this.ready) await this.build();
     const s = await getSettings();
-    const { filterText, fields } = parseFielded(query);
+    const { phrases, filterText, fields } = parseQuery(query);
 
-    const opts: Record<string, unknown> = {
+    const opts: SearchOptions = {
       prefix: s.search.prefix,
       fuzzy: s.search.fuzzy,
       boost: { title: 4, headings: 2, tags: 3 },
     };
     if (fields.length) opts.fields = fields;
 
-    const q = filterText.trim() || query.trim();
-    const results = q ? this.mini.search(q, opts) : [];
+    // `"exact phrases"` narrow the result set first; every phrase must occur
+    // (AND), and the loose terms below are then searched within that set.
+    let allowed: Map<string, Ranked> | null = null;
+    for (const phrase of phrases) {
+      allowed = await this.phraseHits(phrase, allowed);
+      if (!allowed.size) break;
+    }
 
-    const picked = limit > 0 ? results.slice(0, limit) : results;
+    const q = filterText.trim();
+    let ranked: Ranked[];
+    if (q) {
+      const within = allowed;
+      const o = within ? { ...opts, filter: (r: SearchResult) => within.has(r.id) } : opts;
+      ranked = this.mini.search(q, o).map(toRanked);
+    } else if (allowed) {
+      ranked = [...allowed.values()].sort((a, b) => b.score - a.score);
+    } else {
+      ranked = [];
+    }
+
+    const picked = limit > 0 ? ranked.slice(0, limit) : ranked;
     return picked.map((r) => ({
-      path: r.id as string,
-      title: (r as any).title ?? r.id,
+      path: r.id,
+      title: r.title,
       score: r.score,
-      tags: this.tagSet.get(r.id as string) ?? [],
-      snippet: this.snippets.get(r.id as string) ?? '',
+      tags: this.tagSet.get(r.id) ?? [],
+      snippet: this.snippets.get(r.id) ?? '',
     }));
   }
 
-  /** Free-text terms from a query (operators like `tag:`/`path:` stripped),
-   *  used to scan note bodies for highlightable occurrences. */
+  /** Notes containing `phrase` verbatim (case-insensitive substring of body or
+   *  title). MiniSearch has no phrase search, so: take candidates from the index
+   *  (every word of the phrase must be indexed — cheap, no disk), then read each
+   *  candidate to verify adjacency. `within` (from a previous phrase) restricts
+   *  the candidate set so multiple phrases AND together. */
+  private async phraseHits(phrase: string, within: Map<string, Ranked> | null): Promise<Map<string, Ranked>> {
+    const needle = phrase.toLowerCase();
+    const tokens = tokenize(phrase);
+    let candidates: Ranked[];
+    if (tokens.length) {
+      // prefix on so a phrase still being typed (`"hello wor`) finds "hello world";
+      // fuzzy off — a fuzzy hit can never pass the verbatim check anyway.
+      candidates = this.mini
+        .search(tokens.join(' '), {
+          combineWith: 'AND',
+          prefix: true,
+          fuzzy: false,
+          filter: within ? (r) => within.has(r.id) : undefined,
+        })
+        .map(toRanked);
+    } else {
+      // No indexable word (e.g. `"--"`): fall back to scanning every note.
+      const ids = within ? [...within.keys()] : [...this.snippets.keys()];
+      candidates = ids.map((id) => within?.get(id) ?? { id, score: 1, title: id });
+    }
+
+    const out = new Map<string, Ranked>();
+    // Bounded concurrency: a full-vault fallback on a big vault would otherwise
+    // open thousands of files at once (EMFILE).
+    for (let i = 0; i < candidates.length; i += 64) {
+      await Promise.all(
+        candidates.slice(i, i + 64).map(async (c) => {
+          try {
+            const note = parseNote(c.id, await readFileText(c.id));
+            if (note.body.toLowerCase().includes(needle) || note.title.toLowerCase().includes(needle)) {
+              out.set(c.id, { ...c, title: note.title });
+            }
+          } catch {
+            /* unreadable → not a hit */
+          }
+        }),
+      );
+    }
+    return out;
+  }
+
+  /** Needles to scan note bodies for highlightable occurrences: each `"..."`
+   *  phrase as one whole needle, then loose terms (operators like `tag:`/`path:`
+   *  stripped) one per word. */
   queryTerms(query: string): string[] {
-    const { filterText } = parseFielded(query);
-    return (filterText || query)
+    const { phrases, filterText } = parseQuery(query);
+    const loose = filterText
       .split(/\s+/)
-      .map((t) => t.replace(/^["']|["']$/g, '').trim())
+      .map((t) => t.replace(/^'|'$/g, '').trim())
       .filter((t) => t.length >= 2);
+    return [...phrases, ...loose];
   }
 
   /** Read a note's body and extract every occurrence of `terms`, grouped into
@@ -391,8 +472,37 @@ class QmdEngine {
   }
 }
 
-/** Pull `field:` qualifiers out of a query into MiniSearch field filters. */
-function parseFielded(query: string): { filterText: string; fields: string[] } {
+export interface ParsedQuery {
+  /** Exact-phrase needles from `"..."` segments (trimmed, non-empty). */
+  phrases: string[];
+  /** Remaining free text with `field:` prefixes stripped. */
+  filterText: string;
+  /** MiniSearch field filters implied by `tag:`/`path:`/… qualifiers. */
+  fields: string[];
+}
+
+/**
+ * Split a query into `"exact phrases"`, `field:` qualifiers and loose terms.
+ * An unclosed quote runs to the end of the string so results stay stable while
+ * the user is still typing the closing quote; `""` (or whitespace-only) is dropped.
+ */
+export function parseQuery(query: string): ParsedQuery {
+  const phrases: string[] = [];
+  let loose = '';
+  let i = 0;
+  while (i < query.length) {
+    if (query[i] === '"') {
+      const end = query.indexOf('"', i + 1);
+      const phrase = (end === -1 ? query.slice(i + 1) : query.slice(i + 1, end)).trim();
+      if (phrase) phrases.push(phrase);
+      i = end === -1 ? query.length : end + 1;
+      loose += ' ';
+    } else {
+      loose += query[i];
+      i++;
+    }
+  }
+
   const fieldMap: Record<string, string> = {
     tag: 'tags',
     tags: 'tags',
@@ -402,16 +512,20 @@ function parseFielded(query: string): { filterText: string; fields: string[] } {
   };
   const fields = new Set<string>();
   const rest: string[] = [];
-  for (const tok of query.split(/\s+/)) {
-    const m = tok.match(/^(\w+):(.+)$/);
+  for (const tok of loose.split(/\s+/).filter(Boolean)) {
+    const m = tok.match(/^(\w+):(.*)$/);
     if (m && fieldMap[m[1].toLowerCase()]) {
+      // A bare `title:` (its value was a `"..."` phrase, now extracted) would
+      // otherwise be searched as the literal word "title" — drop it instead.
+      // Field-scoped phrases aren't supported; the phrase still applies vault-wide.
+      if (!m[2]) continue;
       fields.add(fieldMap[m[1].toLowerCase()]);
       rest.push(m[2]);
     } else {
       rest.push(tok);
     }
   }
-  return { filterText: rest.join(' '), fields: [...fields] };
+  return { phrases, filterText: rest.join(' '), fields: [...fields] };
 }
 
 export const qmd = new QmdEngine();

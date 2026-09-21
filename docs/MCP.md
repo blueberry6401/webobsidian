@@ -27,6 +27,9 @@ The four write/delete tools carry `destructiveHint` so Claude confirms first. Th
 call the in-process vault/search/link services directly (no HTTP hop). `list_notes`
 accepts `sort` (`name` | `modified` | `created`) + `order` (`asc` | `desc`), defaulting
 to `modified`/`desc` (most-recently-edited first) so new notes never fall past `limit`.
+`search_notes` shares the web panel's query syntax: `"quoted text"` matches the phrase
+**verbatim** (contiguous, case-insensitive substring of body or title) instead of each word
+fuzzily; quoted phrases AND with any remaining loose terms / `tag:`-style qualifiers.
 
 This replaces the standalone Cloudflare Worker (`webobsidian-mcp`), which is retired.
 

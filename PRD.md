@@ -1,7 +1,13 @@
 # PRD — WebObsidian
 
 > Product Requirements Document
-> Phiên bản: 1.12 · Cập nhật: 2026-09-11 · Trạng thái: Draft
+> Phiên bản: 1.13 · Cập nhật: 2026-09-21 · Trạng thái: Draft
+> Changelog 1.13 (FR-7 — Tìm cụm nguyên văn bằng nháy kép, theo yêu cầu người dùng): query bọc
+> trong `"..."` được tìm **nguyên văn** (substring liền nhau, không phân biệt hoa/thường) thay vì
+> tách từng từ fuzzy/prefix như trước. Cụm nháy kép kết hợp AND với từ rời/qualifier còn lại
+> (`"hello world" foo tag:idea` = chứa đúng cụm VÀ khớp `foo`/`tag:idea`), nháy chưa đóng coi là
+> cụm đến hết chuỗi (ổn định khi đang gõ). Highlight/đếm khớp tô nguyên cụm. Agent API `/api/v1/search`
+> và MCP `search_notes` hưởng cùng cú pháp. Xem chi tiết ở FR-7.
 > Changelog 1.12 (FR-16 — MCP key thêm quyền read/write, theo yêu cầu người dùng): key MCP giờ
 > chọn được `permission: 'read' | 'write'` lúc tạo (mặc định `write`, giữ hành vi gốc cho key cũ).
 > Key `read` không thấy 6 tool ghi/xoá trong `tools/list` và gọi thẳng tên cũng bị từ chối; key đã tạo
@@ -326,6 +332,12 @@ webobsidian/
 ### FR-7 · QMD Search engine
 - Index toàn bộ `.md`: nội dung, tiêu đề, headings, tags, path, frontmatter.
 - Truy vấn: full-text, prefix, fuzzy, fielded (`tag:`, `path:`, `title:`), boolean.
+- **Cụm nguyên văn (v1.13)**: `"hello world"` chỉ khớp note có đúng chuỗi `hello world` liền nhau
+  (so substring, không phân biệt hoa/thường; xét body + tiêu đề). Vì MiniSearch không có phrase
+  search, engine lấy ứng viên qua index (AND mọi từ trong cụm, tắt fuzzy/prefix) rồi đọc body
+  từng ứng viên để xác minh — không giữ body trong RAM. Nhiều cụm/từ rời/qualifier trong cùng
+  query kết hợp AND. Nháy kép chưa đóng = cụm kéo đến hết query; `""` bỏ qua. `queryTerms`
+  trả cụm thành một needle duy nhất nên `/search/matches` tô và đếm nguyên cụm.
 - Cập nhật incremental khi file thay đổi (qua watcher).
 - Index lưu/khôi phục trên disk (`data/qmd-index.json`) để khởi động nhanh.
 

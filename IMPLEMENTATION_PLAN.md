@@ -4,9 +4,9 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-09-13 (Phase 38 — MCP key thêm quyền read/write + đổi quyền tại chỗ + modal tạo key)
+Cập nhật lần cuối: 2026-09-21 (Phase 39 — Search: cụm nguyên văn bằng nháy kép)
 
-Trước đó: 2026-09-01 (Phase 37 — nút chỉnh độ rộng cột nội dung theo từng note)
+Trước đó: 2026-09-13 (Phase 38 — MCP key thêm quyền read/write + đổi quyền tại chỗ + modal tạo key)
 
 ---
 
@@ -762,7 +762,43 @@ thu hồi gọi `/mcp` → 401. (Tạo/thu hồi key qua REST `/api/mcp-keys` b�
 restart container như cách `docker exec` ghi thẳng settings.json.) Instance thứ hai (Finpath) người dùng
 tự deploy.
 
+## Phase 39 — Search: tìm cụm nguyên văn bằng nháy kép — FR-7, PRD 1.13 (theo yêu cầu người dùng)
+- [x] M39.1 `parseQuery` (search.ts, export, thay `parseFielded`): tách `"..."` thành `phrases`, giữ qualifier
+      `tag:/path:/title:/heading:` và từ rời như cũ; nháy chưa đóng = cụm đến hết chuỗi; `""` bỏ qua;
+      qualifier cụt sát phrase (`title:"a b"`) bị bỏ thay vì tìm từ "title" (phrase theo field CHƯA hỗ trợ —
+      cụm vẫn áp dụng toàn vault). Unit test `search.test.ts` 11 case
+- [x] M39.2 `qmd.search`: có phrase → `phraseHits()` lấy ứng viên qua MiniSearch (`combineWith: AND`,
+      `prefix: true` để `"hello wor` đang gõ vẫn ra, `fuzzy: false`), đọc body từng ứng viên (chunk 64 —
+      tránh EMFILE) xác minh substring body + title (case-insensitive); cụm không có token index (`"--"`)
+      → quét toàn vault; nhiều cụm/từ rời/qualifier giao nhau (AND, qua `filter` của MiniSearch). Bỏ fallback
+      `filterText || query` cũ (giờ có hại). Test `search.engine.test.ts` 7 case với vault tạm thật
+      (có note đối chứng "hello, world" rời + tag rời để AND thật sự bị thử)
+- [x] M39.3 `qmd.queryTerms`: `[...phrases, ...loose]` → `/search/matches` tô nguyên cụm, badge đếm đúng
+- [x] M39.4 UI: placeholder `Search   (try "exact phrase", tag:idea)`; mô tả tool MCP `search_notes` +
+      `docs/MCP.md` ghi cú pháp nháy kép
+- [x] M39.5 Verify e2e thật (Playwright, build production, server thật cổng 8799, vault tạm 3 note): 9/9 —
+      không nháy → 2 note (Phrase Hit + Decoy Split); `"hello world"` → chỉ Phrase Hit, highlight
+      `["hello world","Hello World"]`, badge 2, meta "1 note · 2 matches"; `"hello wor` (chưa đóng) → vẫn
+      Phrase Hit; `"hello world" wonderful` → 0 (AND); bật `Aa` → chỉ tô 1 (bản viết thường)
+
+Giới hạn đã biết (chấp nhận, ghi để khỏi ngạc nhiên): (1) ứng viên lấy theo token nên cụm nằm GIỮA một
+token dài không ra (`"hello"` không khớp "sayhello"; `prefix: true` chỉ cứu trường hợp "helloworld");
+(2) body > 100k ký tự (`MAX_BODY`) phần đuôi không được index — giống search thường; (3) không hỗ trợ
+`-"cụm"` loại trừ và `field:"cụm"` theo field.
+
+Verify: `npm run typecheck` sạch, `npm run build` sạch, `npm --workspace server run test` **88/88**
+(18 test mới), `npm --workspace web run test` 45/45, `verify-mcp.ts` **53/53** (`search_notes` dùng chung
+`qmd.search`), e2e Playwright 9/9 như M39.5. Chưa deploy — chờ người dùng xác nhận.
+
 ### Nhật ký tiến độ
+- 2026-09-21 (Phase 39 — search cụm nguyên văn bằng nháy kép, theo yêu cầu người dùng): trước đây `"a b"`
+  bị tokenizer bỏ dấu nháy → tìm OR từng từ fuzzy, không khác gì `a b`. MiniSearch không có phrase search
+  và engine cố ý không giữ body trong RAM, nên làm 2 tầng: index lọc ứng viên (AND, prefix, no-fuzzy) rồi
+  đọc disk xác minh substring. Bẫy đã gặp: tokenizer mặc định của MiniSearch trả `["",""]` cho chuỗi toàn
+  dấu (`"--"`) chứ không phải mảng rỗng → phải `filter(Boolean)` trước khi quyết định có quét toàn vault
+  hay không; test AND ban đầu pass "ăn may" vì vault test thiếu note khớp từ rời nhưng không khớp cụm —
+  đã thêm note đối chứng để test thật sự phân biệt. Playwright: `isVisible()` không chờ, phải `waitFor`
+  cho màn "Set a new password" sau login lần đầu.
 - 2026-09-13 (Phase 38 bổ sung — đổi quyền tại chỗ + modal tạo key, theo yêu cầu người dùng sau khi
   xem UI): người dùng muốn key đã tạo cũng đổi được quyền (không phải thu hồi tạo lại) và luồng tạo key
   gọn hơn (bấm nút → modal). Điểm kỹ thuật đáng nhớ: đổi quyền có hiệu lực NGAY mà không restart, vì
