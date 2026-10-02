@@ -4,9 +4,9 @@
 > Quy ước: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong.
 > Cập nhật file này **mỗi khi** một mục thay đổi trạng thái.
 
-Cập nhật lần cuối: 2026-09-21 (Phase 39 — Search: cụm nguyên văn bằng nháy kép; đã deploy prod `6a63302`)
+Cập nhật lần cuối: 2026-10-02 (Phase 40 — nút bật/tắt line number trong editor)
 
-Trước đó: 2026-09-13 (Phase 38 — MCP key thêm quyền read/write + đổi quyền tại chỗ + modal tạo key)
+Trước đó: 2026-09-21 (Phase 39 — Search: cụm nguyên văn bằng nháy kép; đã deploy prod `6a63302`); 2026-09-13 (Phase 38 — MCP key thêm quyền read/write + đổi quyền tại chỗ + modal tạo key)
 
 ---
 
@@ -797,7 +797,15 @@ snippet một note thật — ra `"đường Ngày"`, có dấu tiếng Việt):
 `/search/matches` xác nhận hit đó có ≥1 khớp và mọi range highlight dài đúng 10 ký tự = độ dài cụm; **68 note
 bị loại đều có 0 khớp nguyên cụm**; cụm vô nghĩa → 0. Instance Finpath người dùng tự deploy.
 
+## Phase 40 — Line numbers trong editor (theo yêu cầu người dùng)
+
+- [x] M40.1 `store.lineNumbers` (global, persist cùng workspace state qua `PERSIST_KEYS`, mặc định `false`)
+- [x] M40.2 `Editor.tsx`: `lineNumbers()` của CodeMirror trong `Compartment` — bật/tắt không recreate view
+- [x] M40.3 `Workspace.tsx`: nút `#` ở header note (desktop, note .md) — sáng khi bật
+  Verify: `npm run typecheck` sạch (chưa chạy e2e trình duyệt).
+
 ### Nhật ký tiến độ
+
 - 2026-09-21 (Phase 39 — search cụm nguyên văn bằng nháy kép, theo yêu cầu người dùng): trước đây `"a b"`
   bị tokenizer bỏ dấu nháy → tìm OR từng từ fuzzy, không khác gì `a b`. MiniSearch không có phrase search
   và engine cố ý không giữ body trong RAM, nên làm 2 tầng: index lọc ứng viên (AND, prefix, no-fuzzy) rồi
@@ -1960,3 +1968,4 @@ bị loại đều có 0 khớp nguyên cụm**; cụm vô nghĩa → 0. Instanc
   ~13k/18k px, Playwright lăn CHUỘT THẬT trên cả desktop (1280×800) và mobile (390×844) → section
   cuối dịch 2400px (cuộn được); đối chứng inject lại CSS cũ → 0px (tái hiện đúng bug) trên cả 2
   viewport. Chờ người dùng xác nhận trước khi deploy lên droplet prod.
+- 2026-10-02 (Phase 40): thêm option hiện line number — nút `#` trên header note, lưu persist; typecheck sạch.

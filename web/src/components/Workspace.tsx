@@ -72,6 +72,8 @@ export default function Workspace() {
   const lineWidths = useStore((s) => s.lineWidths);
   const cycleLineWidth = useStore((s) => s.cycleLineWidth);
   const lineWidth = lineWidthOf(lineWidths, activePath);
+  const lineNumbers = useStore((s) => s.lineNumbers);
+  const toggleLineNumbers = useStore((s) => s.toggleLineNumbers);
   const splitPath = useStore((s) => s.splitPath);
   const splitContent = useStore((s) => s.splitContent);
   const closeSplit = useStore((s) => s.closeSplit);
@@ -402,6 +404,15 @@ export default function Workspace() {
                   onClick={() => cycleLineWidth(activePath)}
                 >
                   <Icon name="arrow-left-right" size={16} />
+                </button>
+              )}
+              {!isMobile && (
+                <button
+                  className={`tool-btn ${lineNumbers ? 'active' : ''}`}
+                  title={`Line numbers: ${lineNumbers ? 'on' : 'off'}`}
+                  onClick={toggleLineNumbers}
+                >
+                  <Icon name="hash" size={16} />
                 </button>
               )}
               <div className="seg">

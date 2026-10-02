@@ -1,6 +1,6 @@
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { Compartment, EditorState, Prec } from '@codemirror/state';
-import { EditorView, keymap, highlightActiveLine, drawSelection } from '@codemirror/view';
+import { EditorView, keymap, highlightActiveLine, drawSelection, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { search, searchKeymap } from '@codemirror/search';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
@@ -70,10 +70,13 @@ const saveScrollTop = (path: string, top: number) => {
 const readonlyExt = (reading: boolean) =>
   reading ? [EditorView.editable.of(false), EditorState.readOnly.of(true)] : [];
 
+const lineNumbersExt = (on: boolean) => (on ? lineNumbers() : []);
+
 export default function Editor() {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const readonlyComp = useRef(new Compartment()).current;
+  const lineNumbersComp = useRef(new Compartment()).current;
   const applyingExternal = useRef(false);
   // Path we've already restored the scroll position for, so a later cross-tab
   // content sync doesn't keep yanking the user back after they've scrolled.
@@ -88,6 +91,7 @@ export default function Editor() {
   const setLeftPanel = useStore((s) => s.setLeftPanel);
   const tree = useStore((s) => s.tree);
   const lineWidths = useStore((s) => s.lineWidths);
+  const showLineNumbers = useStore((s) => s.lineNumbers);
 
   useEffect(() => {
     setLivePreviewLinkHandler(openWikilink);
@@ -328,6 +332,7 @@ export default function Editor() {
         livePreviewState.init(() => isMd && viewMode !== 'source'),
         livePreviewReadonly.init(() => viewMode === 'reading'),
         readonlyComp.of(readonlyExt(viewMode === 'reading')),
+        lineNumbersComp.of(lineNumbersExt(useStore.getState().lineNumbers)),
         noteTitleField.init(() => titleOf(activePath)),
         inlineTitleField,
         frontmatterField,
@@ -412,6 +417,11 @@ export default function Editor() {
       ],
     });
   }, [viewMode, activePath]);
+
+  // Toggle the line-number gutter (no recreate).
+  useEffect(() => {
+    view.current?.dispatch({ effects: lineNumbersComp.reconfigure(lineNumbersExt(showLineNumbers)) });
+  }, [showLineNumbers]);
 
   // Debounced autosave.
   useEffect(() => {

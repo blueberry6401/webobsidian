@@ -128,6 +128,9 @@ interface AppState {
   /** Per-note content width (persisted); notes not listed use the narrow default. */
   lineWidths: Record<string, LineWidth>;
   cycleLineWidth: (path: string) => void;
+  /** Show line numbers in the editor gutter (persisted, global). */
+  lineNumbers: boolean;
+  toggleLineNumbers: () => void;
 
   // split pane (open to the side)
   splitPath: string | null;
@@ -250,7 +253,7 @@ const RECENT_CAP = 200;
 const PERSIST_KEYS = [
   'tabs', 'activePath', 'viewMode', 'expanded', 'splitPath', 'splitDirection',
   'recent', 'bookmarks', 'leftPanel', 'rightPanel', 'leftOpen', 'rightOpen', 'graphSettings',
-  'treeSort', 'autoReveal', 'lineWidths',
+  'treeSort', 'autoReveal', 'lineWidths', 'lineNumbers',
 ] as const;
 
 function pickPersisted(s: any): Record<string, unknown> {
@@ -296,6 +299,7 @@ function applyPersisted(s: any, set: (p: any) => void): void {
     treeSort: TREE_SORTS.includes(s.treeSort) ? s.treeSort : 'name-asc',
     autoReveal: s.autoReveal === true,
     lineWidths: sanitizeLineWidths(s.lineWidths),
+    lineNumbers: s.lineNumbers === true,
     splitPath: typeof s.splitPath === 'string' ? s.splitPath : null,
     splitDirection: s.splitDirection === 'down' ? 'down' : 'right',
     recent: migrateRecent(s.recent),
@@ -401,6 +405,8 @@ export const useStore = create<AppState>()(
         set((s) => ({
           lineWidths: setLineWidthEntry(s.lineWidths, path, nextLineWidth(lineWidthOf(s.lineWidths, path))),
         })),
+      lineNumbers: false,
+      toggleLineNumbers: () => set((s) => ({ lineNumbers: !s.lineNumbers })),
 
       splitPath: null,
       splitContent: '',
